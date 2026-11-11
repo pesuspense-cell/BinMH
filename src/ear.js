@@ -3,7 +3,7 @@ import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers
 env.allowLocalModels = false;
 env.backends.onnx.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/";
 
-let transcriber = null;
+const transcribers = {};
 let chain = Promise.resolve();
 
 function cleanTranscript(text) {
@@ -21,9 +21,11 @@ function cleanTranscript(text) {
 async function handle(data) {
   const id = data.id;
   const audio = data.audio;
+  const model = data.model === "Xenova/whisper-small" ? data.model : "Xenova/whisper-base";
   try {
-    if (!transcriber) {
-      transcriber = await pipeline("automatic-speech-recognition", "Xenova/whisper-base", {
+    Object.keys(transcribers).forEach((name) => { if (name !== model) delete transcribers[name]; });
+    if (!transcribers[model]) {
+      transcribers[model] = await pipeline("automatic-speech-recognition", model, {
         quantized: true,
         progress_callback: (item) => {
           if (!item) return;
@@ -33,7 +35,7 @@ async function handle(data) {
       });
     }
     self.postMessage({ id, status: "ready" });
-    const result = await transcriber(audio, {
+    const result = await transcribers[model](audio, {
       language: "korean",
       task: "transcribe",
       chunk_length_s: 30,

@@ -5,6 +5,7 @@
   }
 
   const E = window.LampEngine;
+  const B = window.LampBible;
   const list = E.flatten(window.REVELATION);
   const map = new Map(list.map((verse) => [verse.id, verse]));
   const STORAGE = "seven-lamps-revelation-v1";
@@ -23,6 +24,7 @@
 
   let timer = 0;
   let stamp = "";
+  let searchTimer = 0;
   const ui = {
     page: "home",
     session: null,
@@ -36,7 +38,11 @@
     draftRef: "",
     skipCapture: false,
     nameError: "",
-    journalError: ""
+    journalError: "",
+    editing: "",
+    editDraft: null,
+    editError: "",
+    bibleError: false
   };
 
   let state = load();
@@ -52,7 +58,8 @@
       journal: [],
       chapters: {},
       pick: null,
-      voiceURI: ""
+      voiceURI: "",
+      earModel: "base"
     };
   }
 
@@ -361,7 +368,7 @@
   let dict = null;
   let hearWorker = null;
   let hearWorkerBroken = false;
-  let mainEar = null;
+  const mainEar = {};
   let earJob = 0;
   const earWaiters = new Map();
   const EAR_LIB = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
@@ -506,7 +513,7 @@
   function ensureHearWorker() {
     if (hearWorker || hearWorkerBroken) return hearWorker;
     try {
-      hearWorker = new Worker("src/ear.js?v=5", { type: "module" });
+      hearWorker = new Worker("src/ear.js?v=6", { type: "module" });
     } catch (err) {
       hearWorkerBroken = true;
       return null;
@@ -539,22 +546,27 @@
     return hearWorker;
   }
 
+  function earModel() {
+    return state.earModel === "small" ? "Xenova/whisper-small" : "Xenova/whisper-base";
+  }
+
   async function transcribeHere(audio, onNote) {
-    if (!mainEar) {
+    const model = earModel();
+    if (!mainEar[model]) {
       onNote("음성 모델을 준비하는 중…");
-      mainEar = import(EAR_LIB).then(({ pipeline, env }) => {
+      mainEar[model] = import(EAR_LIB).then(({ pipeline, env }) => {
         env.allowLocalModels = false;
         env.backends.onnx.wasm.wasmPaths = EAR_LIB + "/dist/";
-        return pipeline("automatic-speech-recognition", "Xenova/whisper-base", {
+        return pipeline("automatic-speech-recognition", model, {
           quantized: true,
           progress_callback: (item) => {
             if (item && item.status === "progress") onNote("음성 모델을 받는 중… " + Math.round(item.progress) + "% (처음 한 번만 받습니다)");
           }
         });
       });
-      mainEar.catch(() => { mainEar = null; });
+      mainEar[model].catch(() => { mainEar[model] = null; });
     }
-    const asr = await mainEar;
+    const asr = await mainEar[model];
     onNote("받아 적는 중…");
     const result = await asr(audio, { language: "korean", task: "transcribe", chunk_length_s: 30, stride_length_s: 5, no_repeat_ngram_size: 3, repetition_penalty: 1.15, num_beams: 1 });
     return cleanHeard(result && result.text);
@@ -568,7 +580,7 @@
     const copy = new Float32Array(audio);
     return new Promise((resolve, reject) => {
       earWaiters.set(id, { resolve, reject, onNote, fallback: () => transcribeHere(audio, onNote).then(resolve, reject) });
-      worker.postMessage({ id, audio: copy }, [copy.buffer]);
+      worker.postMessage({ id, audio: copy, model: earModel() }, [copy.buffer]);
     });
   }
 
@@ -1369,47 +1381,100 @@
   }
 
   function submitJournal(form) {
-    const text = String(form.elements.text.value || "").trim();
-    const refRaw = String(form.elements.ref.value || "").trim();
-    if (!text) {
-      ui.journalError = "한 줄은 남겨 주세요.";
-      render();
-      return;
-    }
-    let ref = "";
-    if (refRaw) {
-      ref = cleanRef(refRaw);
-      if (!ref) {
-        ui.journalError = "구절은 21:4처럼 장과 절을 적어 주세요.";
-        ui.draft = text;
-        ui.draftRef = refRaw;
-        ui.skipCapture = true;
-        render();
-        return;
-      }
-    }
-    state.journal.unshift({
-      id: Date.now().toString(36),
-      at: new Date().toISOString(),
-      day: today(),
-      text: text.slice(0, 1000),
-      mood: ui.mood,
-      ref,
-      amened: false
+    saveJournal({
+      editId: form.dataset.id || "",
+      text: String(form.elements.text.value || "").trim(),
+      refRaw: String(form.elements.ref.value || "").trim(),
+      mood: form.dataset.id ? (ui.editDraft && ui.editDraft.mood) || ui.mood : ui.mood
     });
-    addXp(8);
-    ui.draft = "";
-    ui.draftRef = "";
-    ui.journalError = "";
+  }
+
+  function journalFail(values, message) {
+    if (values.editId) {
+      ui.editError = message;
+      ui.editDraft = { text: values.text, ref: values.refRaw, mood: values.mood };
+    } else {
+      ui.journalError = message;
+      ui.draft = values.text;
+      ui.draftRef = values.refRaw;
+    }
     ui.skipCapture = true;
     render();
   }
 
-  function cleanRef(raw) {
-    const matched = String(raw || "").match(/(\d+)\s*[:장]\s*(\d+)/);
-    if (!matched) return "";
-    const id = Number(matched[1]) + ":" + Number(matched[2]);
-    return map.has(id) ? id : "";
+  function saveJournal(values) {
+    if (!values.text) return journalFail(values, "한 줄은 남겨 주세요.");
+    let verse = null;
+    if (values.refRaw) {
+      if (!B.ready()) {
+        B.load().then(() => saveJournal(values), () => journalFail(values, "성경 본문을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요."));
+        return;
+      }
+      verse = journalVerse(values.refRaw);
+      if (typeof verse === "string") return journalFail(values, verse);
+    }
+    const fields = {
+      text: values.text.slice(0, 1000),
+      mood: values.mood,
+      ref: verse ? verse.key : "",
+      refLabel: verse ? verse.label : "",
+      refText: verse ? verse.text : ""
+    };
+    if (values.editId) {
+      const item = state.journal.find((entry) => entry.id === values.editId);
+      if (item) Object.assign(item, fields, { editedAt: new Date().toISOString() });
+      ui.editing = "";
+      ui.editDraft = null;
+      ui.editError = "";
+    } else {
+      state.journal.unshift(Object.assign({
+        id: Date.now().toString(36),
+        at: new Date().toISOString(),
+        day: today(),
+        amened: false
+      }, fields));
+      addXp(8);
+      ui.draft = "";
+      ui.draftRef = "";
+      ui.journalError = "";
+    }
+    ui.skipCapture = true;
+    render();
+  }
+
+  function journalVerse(raw) {
+    const ref = B.parseRef(raw);
+    if (!ref || ref.verse == null) return "구절은 요 3:16, 시 23:1-3처럼 책 이름과 장·절을 적어 주세요. 책 이름이 없으면 계시록으로 봅니다.";
+    if (ref.end && ref.end - ref.verse >= 10) return "함께 둘 구절은 열 절까지입니다.";
+    return { key: B.refKey(ref), label: B.label(ref), text: B.textOf(ref, 10) };
+  }
+
+  function entryVerse(entry) {
+    if (!entry.ref) return null;
+    if (entry.refText) return { label: entry.refLabel, text: entry.refText };
+    const old = map.get(entry.ref);
+    return old ? { label: refText(old.id), text: old.text } : null;
+  }
+
+  function entryRefInput(entry) {
+    if (!entry.ref) return "";
+    if (entry.refLabel) return entry.refLabel;
+    const ref = B.keyToRef(entry.ref);
+    return ref ? B.label(ref) : "";
+  }
+
+  function paintRefPreview(input) {
+    const preview = input && document.getElementById(input.dataset.preview);
+    if (!preview) return;
+    const raw = input.value.trim();
+    if (!raw) { preview.textContent = ""; return; }
+    if (!B.ready()) {
+      preview.textContent = "성경 본문을 불러오는 중…";
+      B.load().then(() => paintRefPreview(document.getElementById(input.id)), () => { preview.textContent = "성경 본문을 불러오지 못했습니다."; });
+      return;
+    }
+    const verse = journalVerse(raw);
+    preview.textContent = typeof verse === "string" ? "" : verse.label + " · " + (verse.text.length > 220 ? verse.text.slice(0, 220) + "…" : verse.text);
   }
 
   function removeJournal(id) {
@@ -1492,6 +1557,12 @@
     const ref = document.getElementById("journal-ref");
     if (text) ui.draft = text.value;
     if (ref) ui.draftRef = ref.value;
+    const editText = document.getElementById("edit-text");
+    const editRef = document.getElementById("edit-ref");
+    if (editText && ui.editDraft) {
+      ui.editDraft.text = editText.value;
+      ui.editDraft.ref = editRef ? editRef.value : ui.editDraft.ref;
+    }
   }
 
   function formatClock(date) {
@@ -1592,7 +1663,7 @@
     const info = E.levelInfo(state.xp);
     const letters = known ? list.filter((verse) => (state.cards[verse.id]?.stage || 0) >= 3).reduce((sum, verse) => sum + verse.text.replace(/\s/g, "").length, 0) : 0;
     return '<p class="clock" id="clock"></p><h1>' + esc(greeting()) + "</h1>" +
-      '<label class="search"><span aria-hidden="true">⌕</span><input id="q" placeholder="성구, 단어, 1:8, 21장" value="' + esc(ui.query) + '" autocomplete="off"></label>' +
+      '<label class="search"><span aria-hidden="true">⌕</span><input id="q" placeholder="성경 전서에서 찾기: 낱말, 요 3:16, 시 23, 계 21:4" value="' + esc(ui.query) + '" autocomplete="off"></label>' +
       '<div id="search-results">' + searchHtml(ui.query) + "</div>" +
       '<section class="hero"><div><p class="eyebrow">오늘 암송</p><h2>' + esc(heroTitle) + "</h2><p class=\"muted\">" + esc(plan) + (due ? " · 먼저 복습 " + due + "절" : "") + '</p></div><button class="btn gold" type="button" data-act="start-daily">' + (ui.session && ui.session.phase !== "done" ? "이어하기" : goal === 0 ? "복습하러 가기" : "암송 시작") + "</button></section>" +
       '<div class="grid-2"><article class="card"><h3>오늘의 기도</h3><div class="prayer-row">' + prayerButtons() + '</div><p class="muted">세 번을 채운 날 ' + prayerStreak() + '일</p>' + weekDots() + '</article>' +
@@ -1651,9 +1722,34 @@
   }
 
   function searchHtml(query) {
-    const found = E.searchVerses(list, query);
-    if (!query.trim() || !found.length) return "";
-    return '<div class="results">' + found.map((verse) => '<button type="button" data-act="open-verse" data-id="' + verse.id + '"><b>' + esc(refText(verse.id)) + "</b><span>" + esc(verse.text) + "</span></button>").join("") + "</div>";
+    const q = String(query || "").trim();
+    if (!q) return "";
+    if (!B.ready()) {
+      if (!ui.bibleError) B.load().then(refreshSearch, () => { ui.bibleError = true; refreshSearch(); });
+      const local = E.searchVerses(list, q).map((verse) => ({ book: B.REVELATION, chapter: verse.chapter, verse: verse.verse, text: verse.text }));
+      const note = ui.bibleError ? "성경 전서를 불러오지 못해 계시록 안에서만 찾았습니다." : "성경 전서를 불러오는 중입니다. 지금은 계시록 결과만 보입니다.";
+      return resultsHtml(local, local.length, note);
+    }
+    const found = B.search(q, 50);
+    if (!found.hits.length) return '<div class="results"><p class="results-note">찾은 구절이 없습니다. 낱말을 줄이거나 요 3:16, 시 23처럼 적어 보세요.</p></div>';
+    const more = found.total > found.hits.length ? "모두 " + found.total + "절 가운데 앞 " + found.hits.length + "절입니다. 낱말을 더 붙이거나 책 이름을 앞에 적으면 좁혀집니다." : found.total + "절을 찾았습니다.";
+    return resultsHtml(found.hits, found.total, more);
+  }
+
+  function resultsHtml(hits, total, note) {
+    if (!hits.length) return note ? '<div class="results"><p class="results-note">' + esc(note) + "</p></div>" : "";
+    return '<div class="results"><p class="results-note">' + esc(note) + " 계시록 구절은 눌러서 읽고, 다른 구절은 눌러서 신앙일기에 둡니다.</p>" + hits.map((hit) => {
+      const ref = { book: hit.book, chapter: hit.chapter, verse: hit.verse, end: null };
+      const attrs = hit.book === B.REVELATION && map.has(hit.chapter + ":" + hit.verse)
+        ? 'data-act="open-verse" data-id="' + hit.chapter + ":" + hit.verse + '"'
+        : 'data-act="ref-to-journal" data-ref="' + esc(B.label(ref)) + '"';
+      return '<button type="button" ' + attrs + "><b>" + esc(B.label(ref)) + "</b><span>" + esc(hit.text) + "</span></button>";
+    }).join("") + "</div>";
+  }
+
+  function refreshSearch() {
+    const box = document.getElementById("search-results");
+    if (box) box.innerHTML = searchHtml(ui.query);
   }
 
   function practiceHtml() {
@@ -1723,14 +1819,22 @@
 
   function journalHtml() {
     const posts = state.journal.length ? state.journal.map((entry) => {
-      const verse = entry.ref ? map.get(entry.ref) : null;
-      return '<article class="card post" data-mood="' + esc(entry.mood) + '"><header><div class="avatar">' + esc(state.name.slice(0, 1)) + '</div><div><strong>' + esc(state.name) + "</strong><span>" + esc(formatWhen(entry.at)) + '</span></div><em>' + esc(entry.mood) + '</em></header><p class="body">' + esc(entry.text) + "</p>" +
-        (verse ? '<div class="quote"><b>' + esc(refText(verse.id)) + "</b>" + esc(verse.text) + "</div>" : "") +
-        '<footer><button class="amen ' + (entry.amened ? "on" : "") + '" type="button" data-act="amen" data-id="' + esc(entry.id) + '">아멘' + (entry.amened ? " · 남김" : "") + '</button><button class="btn ghost small" type="button" data-act="delete-journal" data-id="' + esc(entry.id) + '">지우기</button></footer></article>';
+      if (entry.id === ui.editing && ui.editDraft) return editPostHtml(entry);
+      const verse = entryVerse(entry);
+      return '<article class="card post" data-mood="' + esc(entry.mood) + '"><header><div class="avatar">' + esc(state.name.slice(0, 1)) + '</div><div><strong>' + esc(state.name) + "</strong><span>" + esc(formatWhen(entry.at)) + (entry.editedAt ? " · 고침" : "") + '</span></div><em>' + esc(entry.mood) + '</em></header><p class="body">' + esc(entry.text) + "</p>" +
+        (verse ? '<div class="quote"><b>' + esc(verse.label) + "</b>" + esc(verse.text) + "</div>" : "") +
+        '<footer><button class="amen ' + (entry.amened ? "on" : "") + '" type="button" data-act="amen" data-id="' + esc(entry.id) + '">아멘' + (entry.amened ? " · 남김" : "") + '</button><span class="row"><button class="btn ghost small" type="button" data-act="edit-journal" data-id="' + esc(entry.id) + '">고치기</button><button class="btn ghost small" type="button" data-act="delete-journal" data-id="' + esc(entry.id) + '">지우기</button></span></footer></article>';
     }).join("") : '<article class="card"><p class="muted">아직 쌓인 기록이 없습니다. 오늘 마음에 남은 한 줄이면 충분합니다.</p></article>';
-    return '<div class="feed"><p class="eyebrow">신앙일기</p><h1>쌓이는 기록</h1><form class="card composer" data-act="journal"><textarea id="journal-text" name="text" maxlength="1000" placeholder="오늘 마음에 남은 것을 적어 보세요">' + esc(ui.draft || "") + '</textarea><input class="textin" id="journal-ref" name="ref" placeholder="함께 둔 구절, 예: 21:4" value="' + esc(ui.draftRef || "") + '"><p id="ref-preview" class="faint"></p><div class="moods">' +
+    return '<div class="feed"><p class="eyebrow">신앙일기</p><h1>쌓이는 기록</h1><form class="card composer" data-act="journal"><textarea id="journal-text" name="text" maxlength="1000" placeholder="오늘 마음에 남은 것을 적어 보세요">' + esc(ui.draft || "") + '</textarea><input class="textin" id="journal-ref" name="ref" data-preview="ref-preview" placeholder="함께 둔 구절, 예: 요 3:16, 시 23:1-3, 계 21:4" value="' + esc(ui.draftRef || "") + '" autocomplete="off"><p id="ref-preview" class="faint"></p><div class="moods">' +
       MOODS.map((mood) => '<button type="button" data-act="mood" data-mood="' + mood + '" class="' + (ui.mood === mood ? "on" : "") + '">' + mood + "</button>").join("") +
       '</div>' + (ui.journalError ? '<p class="error">' + esc(ui.journalError) + "</p>" : "") + '<button class="btn gold" type="submit">남기기</button></form>' + posts + "</div>";
+  }
+
+  function editPostHtml(entry) {
+    const draft = ui.editDraft;
+    return '<form class="card composer post" data-act="journal" data-id="' + esc(entry.id) + '" data-mood="' + esc(draft.mood) + '"><p class="eyebrow">' + esc(formatWhen(entry.at)) + ' 기록 고치기</p><textarea id="edit-text" name="text" maxlength="1000">' + esc(draft.text) + '</textarea><input class="textin" id="edit-ref" name="ref" data-preview="edit-ref-preview" placeholder="함께 둔 구절, 예: 요 3:16" value="' + esc(draft.ref) + '" autocomplete="off"><p id="edit-ref-preview" class="faint"></p><div class="moods">' +
+      MOODS.map((mood) => '<button type="button" data-act="edit-mood" data-mood="' + mood + '" class="' + (draft.mood === mood ? "on" : "") + '">' + mood + "</button>").join("") +
+      "</div>" + (ui.editError ? '<p class="error">' + esc(ui.editError) + "</p>" : "") + '<div class="row"><button class="btn gold" type="submit">고친 내용 저장</button><button class="btn ghost" type="button" data-act="edit-cancel">그만두기</button></div></form>';
   }
 
   function statsHtml() {
@@ -1768,6 +1872,8 @@
       '<article class="card" style="margin-bottom:16px"><h3>머문 시간</h3>' + barChart(usage.map((item) => ({ v: item.v, tick: Number(item.key.slice(8)), label: item.key + " " + Math.round(item.v) + "분" }))) + "</article>" +
       '<article class="card" style="margin-bottom:16px"><h3>사용한 날</h3><div class="heat">' + heatHtml() + '</div><p class="faint">색이 진할수록 그 날의 점수, 곧 암송하고 기도하고 기록한 양이 큽니다.</p></article>' +
       '<article class="card" style="margin-bottom:16px"><h3>읽는 목소리</h3><p class="faint" id="voice-note">' + esc(voiceNote()) + '</p><div class="row"><select class="voice" data-act="voice">' + voiceOptionsHtml() + '</select><button class="btn" type="button" data-act="voice-sample">들어 보기</button></div></article>' +
+      '<article class="card" style="margin-bottom:16px"><h3>말로 입력 정확도</h3><p class="faint">Chrome·Edge에서는 브라우저의 음성인식을 먼저 씁니다. 그것을 쓸 수 없을 때 이 기기 안의 음성 모델이 받아 적습니다.</p><div class="row">' +
+      [["base", "빠르게 · 기본", "처음 한 번 약 73MB"], ["small", "정확도 우선", "처음 한 번 약 238MB · 받아 적기 2~3배 느림"]].map(([key, name, info]) => '<button class="btn ' + ((state.earModel || "base") === key ? "gold" : "ghost") + '" type="button" data-act="ear-model" data-model="' + key + '" aria-pressed="' + ((state.earModel || "base") === key) + '">' + name + '<br><small class="faint">' + info + "</small></button>").join("") + "</div></article>" +
       '<article class="card" style="margin-bottom:16px"><h3>기록 옮기기</h3><p class="faint">기록은 이 브라우저에만 저장됩니다. 다른 주소나 기기로 옮길 때 파일로 내보낸 뒤 그곳에서 가져오세요.</p><div class="row"><button class="btn" type="button" data-act="export">기록 내보내기</button><label class="btn ghost">기록 가져오기<input type="file" accept="application/json,.json" data-act="import" hidden></label></div></article>' +
       '<article class="card"><h3>이름</h3><form data-act="rename" class="row"><input class="textin" name="name" value="' + esc(state.name) + '" maxlength="16"><button class="btn" type="submit">바꾸기</button></form>' +
       '<form data-act="reset" style="margin-top:18px"><p class="faint">기록을 모두 지우려면 초기화라고 적고 버튼을 누르세요.</p><div class="row"><input class="textin" name="word" placeholder="초기화"><button class="btn" type="submit">기록 지우기</button></div></form></article>';
@@ -2034,11 +2140,8 @@
       const el = document.getElementById("v-" + ui.highlight.replace(":", "-"));
       if (el) el.scrollIntoView({ block: "center" });
     }
-    const preview = document.getElementById("ref-preview");
-    if (preview) {
-      const id = cleanRef(ui.draftRef || "");
-      preview.textContent = id ? map.get(id).text : "";
-    }
+    paintRefPreview(document.getElementById("journal-ref"));
+    paintRefPreview(document.getElementById("edit-ref"));
     if (ui.session && ui.session.step) ui.session.step.shake = false;
   }
 
@@ -2082,6 +2185,11 @@
     }
     if (act === "speak") return speak(map.get(ui.session.step.id).text);
     if (act === "export") return exportState();
+    if (act === "ear-model") {
+      state.earModel = el.dataset.model === "small" ? "small" : "base";
+      render();
+      return;
+    }
     if (act === "voice-sample") return speak("주 하나님이 가라사대 나는 알파와 오메가라");
     if (act === "after-read") { afterRead(); render(); return; }
     if (act === "chunk") return tapChunk(Number(el.dataset.i));
@@ -2118,6 +2226,39 @@
       if (!item) return;
       item.amened = !item.amened;
       render();
+      return;
+    }
+    if (act === "edit-journal") {
+      const item = state.journal.find((entry) => entry.id === el.dataset.id);
+      if (!item) return;
+      ui.editing = item.id;
+      ui.editDraft = { text: item.text, ref: entryRefInput(item), mood: item.mood };
+      ui.editError = "";
+      render();
+      const field = document.getElementById("edit-text");
+      if (field) field.focus();
+      return;
+    }
+    if (act === "edit-mood") {
+      if (ui.editDraft) ui.editDraft.mood = el.dataset.mood;
+      render();
+      return;
+    }
+    if (act === "edit-cancel") {
+      ui.editing = "";
+      ui.editDraft = null;
+      ui.editError = "";
+      render();
+      return;
+    }
+    if (act === "ref-to-journal") {
+      ui.draftRef = el.dataset.ref;
+      ui.journalError = "";
+      ui.page = "journal";
+      render();
+      window.scrollTo(0, 0);
+      const field = document.getElementById("journal-text");
+      if (field) field.focus();
       return;
     }
     if (act === "delete-journal") {
@@ -2172,16 +2313,14 @@
   function onInput(event) {
     if (event.target.id === "q") {
       ui.query = event.target.value;
-      const box = document.getElementById("search-results");
-      if (box) box.innerHTML = searchHtml(ui.query);
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(refreshSearch, 120);
     }
-    if (event.target.id === "journal-ref") {
-      ui.draftRef = event.target.value;
-      const preview = document.getElementById("ref-preview");
-      const id = cleanRef(ui.draftRef);
-      if (preview) preview.textContent = id ? map.get(id).text : "";
-    }
+    if (event.target.id === "journal-ref") ui.draftRef = event.target.value;
+    if (event.target.id === "journal-ref" || event.target.id === "edit-ref") paintRefPreview(event.target);
     if (event.target.id === "journal-text") ui.draft = event.target.value;
+    if (ui.editDraft && event.target.id === "edit-text") ui.editDraft.text = event.target.value;
+    if (ui.editDraft && event.target.id === "edit-ref") ui.editDraft.ref = event.target.value;
   }
 
   function onVoiceChange(event) {

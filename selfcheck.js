@@ -110,4 +110,27 @@ const diff = E.wordDiff("예수 그리스도의 계시", list[0].text);
 assert(diff.some((part) => part.type === "miss"), "diff miss");
 assert(diff.some((part) => part.type === "ok"), "diff ok");
 
-console.log("selfcheck ok", list.length, "daily", daily.map((q) => q.kind).join(","));
+const whole = JSON.parse(fs.readFileSync("./src/bible.json", "utf8"));
+const bibleBox = { fetch: async () => ({ ok: true, json: async () => whole }) };
+bibleBox.window = bibleBox;
+vm.createContext(bibleBox);
+vm.runInContext(fs.readFileSync("./src/bible.js", "utf8"), bibleBox);
+const BB = bibleBox.LampBible;
+assert(whole.length === 66 && whole.flat(2).length === 31103, "bible size");
+list.forEach((verse) => assert(whole[65][verse.chapter - 1][verse.verse - 1] === verse.text, "revelation matches bible " + verse.id));
+
+BB.load().then(() => {
+  const label = (raw) => { const ref = BB.parseRef(raw); return ref ? BB.label(ref) : null; };
+  assert(label("요 3:16") === "요한복음 3:16", "john ref");
+  assert(label("요한복음 3장 16절") === "요한복음 3:16", "john words ref");
+  assert(label("요한1서 4:8") === "요한일서 4:8", "1john ref");
+  assert(label("고전 13:4~7") === "고린도전서 13:4-7", "range ref");
+  assert(label("시 23") === "시편 23장", "chapter ref");
+  assert(label("21:4") === "요한계시록 21:4", "bare ref is revelation");
+  assert(label("요 30:1") === null && label("사랑") === null, "bad refs");
+  assert(BB.label(BB.keyToRef("21:4")) === "요한계시록 21:4", "old journal key");
+  assert(BB.search("독생자").total === 5, "search 독생자");
+  assert(BB.search("여호와는 나의 목자").hits[0].book === 19, "search phrase");
+  assert(BB.search("요한복음 사랑").hits.every((hit) => hit.book === 43), "search within book");
+  console.log("selfcheck ok", list.length, "daily", daily.map((q) => q.kind).join(","), "bible", whole.flat(2).length);
+}).catch((err) => { console.error(err); process.exit(1); });
