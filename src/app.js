@@ -323,7 +323,23 @@
     return isKoreanVoice(voice) ? cleaned : cleaned + " · " + (voice.lang || "");
   }
 
+  const AI_VOICES = [
+    ["cedar", "AI 남성 · 깊고 차분한"],
+    ["marin", "AI 여성 · 맑고 따뜻한"],
+    ["onyx", "AI 남성 · 낮고 묵직한"],
+    ["coral", "AI 여성 · 부드러운"]
+  ];
+  const SPEAK_VERSION = 1;
+  let player = null;
+
+  function aiVoice() {
+    if (!state.voiceURI) return AI_VOICES[0][0];
+    const m = /^ai:(\w+)$/.exec(state.voiceURI);
+    return m && AI_VOICES.some(([key]) => key === m[1]) ? m[1] : "";
+  }
+
   function voiceNote() {
+    if (aiVoice()) return "AI 목소리는 인터넷에 연결된 상태에서 읽습니다. 처음 듣는 절은 몇 초 걸리고, 한 번 들은 절은 바로 나옵니다.";
     const installed = loadVoices();
     const korean = installed.filter(isKoreanVoice);
     if (!installed.length) return "목소리를 불러오는 중입니다.";
@@ -334,10 +350,12 @@
   }
 
   function voiceOptionsHtml() {
+    const ai = aiVoice();
+    const aiHtml = AI_VOICES.map(([key, label]) => '<option value="ai:' + key + '"' + (ai === key ? " selected" : "") + ">" + esc(label) + "</option>").join("");
     const items = voiceChoices();
-    const current = chosenVoice();
-    if (!items.length) return '<option value="">기본 한국어</option>';
-    return items.map((voice) => '<option value="' + esc(voice.voiceURI) + '"' + (current && voice.voiceURI === current.voiceURI ? " selected" : "") + ">" + esc(voiceLabel(voice)) + "</option>").join("");
+    const current = ai ? null : chosenVoice();
+    const deviceHtml = items.map((voice) => '<option value="' + esc(voice.voiceURI) + '"' + (current && voice.voiceURI === current.voiceURI ? " selected" : "") + ">" + esc(voiceLabel(voice)) + "</option>").join("");
+    return '<optgroup label="AI 목소리">' + aiHtml + "</optgroup>" + (deviceHtml ? '<optgroup label="이 기기 목소리">' + deviceHtml + "</optgroup>" : "");
   }
 
   function paintVoiceSelects() {
@@ -351,7 +369,47 @@
     if (note) note.textContent = voiceNote();
   }
 
-  function speak(text) {
+  function stopSpeaking() {
+    clearTimeout(speakTimer);
+    if (player) {
+      player.onerror = null;
+      player.pause();
+      player = null;
+    }
+    speakLoading(false);
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }
+
+  function speakLoading(on) {
+    document.querySelectorAll("[data-act='speak'], [data-act='voice-sample']").forEach((btn) => {
+      btn.textContent = on ? "불러오는 중…" : "들어 보기";
+    });
+  }
+
+  function speakVerse(id) {
+    const verse = map.get(id);
+    if (!verse) return;
+    stopSpeaking();
+    const voice = aiVoice();
+    if (!voice) return speakDevice(verse.text);
+    const audio = new Audio("/api/speak?id=" + encodeURIComponent(id) + "&voice=" + voice + "&v=" + SPEAK_VERSION);
+    player = audio;
+    let fell = false;
+    const fallback = () => {
+      if (fell || player !== audio) return;
+      fell = true;
+      player = null;
+      speakLoading(false);
+      speakDevice(verse.text);
+    };
+    speakLoading(true);
+    audio.onplaying = () => speakLoading(false);
+    audio.onended = () => { if (player === audio) player = null; };
+    audio.onerror = fallback;
+    audio.play().catch(fallback);
+  }
+
+  function speakDevice(text) {
     try {
       if (!window.speechSynthesis || !text) return;
       window.speechSynthesis.cancel();
@@ -829,7 +887,7 @@
 
   function startHearing(form) {
     stopHearing();
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    stopSpeaking();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.AudioContext) {
       setHearNote("이 화면에서는 마이크를 쓸 수 없습니다. https 주소나 start.bat으로 연 주소(http://127.0.0.1:5173)에서 말해 주세요.");
       return;
@@ -1024,7 +1082,7 @@
 
   function go(page) {
     clearTimerFn();
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    stopSpeaking();
     if (page !== "session" && ui.session && ui.session.phase === "done") ui.session = null;
     ui.page = page;
     render();
@@ -2568,7 +2626,7 @@
       if (dict) return finishHearing();
       return startHearing(form);
     }
-    if (act === "speak") return speak(map.get(ui.session.step.id).text);
+    if (act === "speak") return speakVerse(ui.session.step.id);
     if (act === "export") return exportState();
     if (act === "sync-pick") { S.resolve(el.dataset.side === "local" ? "local" : "remote"); render(); return; }
     if (act === "sync-now") { S.pull(); return; }
@@ -2579,7 +2637,7 @@
       render();
       return;
     }
-    if (act === "voice-sample") return speak("주 하나님이 가라사대 나는 알파와 오메가라");
+    if (act === "voice-sample") return speakVerse("1:8");
     if (act === "after-read") { afterRead(); render(); return; }
     if (act === "chunk") return tapChunk(Number(el.dataset.i));
     if (act === "unchunk") {
@@ -2744,7 +2802,9 @@
     el.dataset.sig = el.innerHTML;
     persist();
     const reading = ui.session && ui.session.phase === "read" && ui.session.step;
-    speak(reading ? map.get(ui.session.step.id).text : "주 하나님이 가라사대 나는 알파와 오메가라");
+    const note = document.getElementById("voice-note");
+    if (note) note.textContent = voiceNote();
+    speakVerse(reading ? ui.session.step.id : "1:8");
   }
 
   document.addEventListener("click", onClick);
@@ -2759,7 +2819,7 @@
     loadVoices();
   }
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden" && window.speechSynthesis) window.speechSynthesis.cancel();
+    if (document.visibilityState === "hidden") stopSpeaking();
   });
 
   ui.session = loadSession();
