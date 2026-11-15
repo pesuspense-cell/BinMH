@@ -308,5 +308,11 @@
     };
   }
 
-  window.LampSync = { init, touched, pull, resolve, signIn, signUp, forgot, newPassword, signOut, status, stable };
+  async function token() {
+    if (!client || !user) return "";
+    const { data } = await client.auth.getSession();
+    return (data && data.session && data.session.access_token) || "";
+  }
+
+  window.LampSync = { init, touched, pull, resolve, signIn, signUp, forgot, newPassword, signOut, status, stable, token };
 })();

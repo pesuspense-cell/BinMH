@@ -594,6 +594,77 @@
     });
   }
 
+  let serverEarOff = false;
+  const SERVER_EAR_SECONDS = 90;
+
+  function wavBase64(samples) {
+    const bytes = new Uint8Array(44 + samples.length * 2);
+    const view = new DataView(bytes.buffer);
+    const text = (at, s) => { for (let i = 0; i < s.length; i++) bytes[at + i] = s.charCodeAt(i); };
+    text(0, "RIFF");
+    view.setUint32(4, 36 + samples.length * 2, true);
+    text(8, "WAVEfmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, 16000, true);
+    view.setUint32(28, 32000, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    text(36, "data");
+    view.setUint32(40, samples.length * 2, true);
+    for (let i = 0; i < samples.length; i++) {
+      const v = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(binary);
+  }
+
+  function earPrompt(form) {
+    const target = heardTarget(form);
+    const verse = target ? list.find((item) => item.text === target || item.text.startsWith(target)) : null;
+    const vocab = [];
+    if (verse) {
+      const near = [verse].concat(list.filter((item) => item.chapter === verse.chapter && item.id !== verse.id));
+      near.forEach((item) => {
+        if (!unitCache.has(item.id)) unitCache.set(item.id, E.clozeUnits(item.text).filter((unit) => unit.score >= 3));
+        unitCache.get(item.id).forEach((unit) => { if (!vocab.includes(unit.answer)) vocab.push(unit.answer); });
+      });
+    }
+    return "개역한글 요한계시록을 외워 낭독합니다. 들은 그대로 옛 성경 표기로 적습니다(예: 볼찌어다, 가라사대, 하시니라, 있을찌어다)." +
+      (vocab.length ? " 나올 수 있는 낱말: " + vocab.slice(0, 80).join(", ") + "." : "");
+  }
+
+  async function transcribeServer(samples, form) {
+    if (serverEarOff || !S || !S.token || !S.status().signedIn) return "";
+    const token = await S.token();
+    if (!token) return "";
+    const clip = samples.length > 16000 * SERVER_EAR_SECONDS ? samples.subarray(0, 16000 * SERVER_EAR_SECONDS) : samples;
+    const stop = new AbortController();
+    const timer = setTimeout(() => stop.abort(), 30000);
+    try {
+      const reply = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ audio: wavBase64(clip), prompt: earPrompt(form) }),
+        signal: stop.signal
+      });
+      if ([404, 405, 501, 503].includes(reply.status)) {
+        serverEarOff = true;
+        return "";
+      }
+      if (!reply.ok) return "";
+      const data = await reply.json();
+      return cleanHeard(data.text);
+    } catch (err) {
+      return "";
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   function hasSpeech(samples) {
     const frame = 320;
     const levels = [];
@@ -825,9 +896,10 @@
       const raw = stopCapture(current.recorder);
       current.stream.getTracks().forEach((track) => track.stop());
       await cloudDone;
-      said = cleanHeard(pickHeard(current));
+      const samples = prepareSamples(raw, current.recorder.rate);
+      if (samples && samples !== "silent") said = await transcribeServer(samples, current.form);
+      if (!said) said = cleanHeard(pickHeard(current));
       if (!said) {
-        const samples = prepareSamples(raw, current.recorder.rate);
         if (!samples) reason = "녹음된 소리가 너무 짧습니다. 말한 뒤에 버튼을 눌러 주세요.";
         else if (samples === "silent") reason = "말소리가 들리지 않았습니다. 마이크 가까이에서 또렷하게 말한 뒤 다시 눌러 주세요.";
         else said = await transcribeKorean(samples, setHearNote);
