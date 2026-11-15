@@ -382,7 +382,8 @@
   let earJob = 0;
   const earWaiters = new Map();
   const EAR_LIB = "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
-  const HEAR_LABEL = "다시 눌러 적기";
+  const HEAR_LABEL = "입력 완료";
+  const DICTATE_LABEL = "음성입력";
 
   function cloudSpeech() {
     if (/Cursor\/|Electron\//.test(navigator.userAgent)) return null;
@@ -390,7 +391,7 @@
   }
 
   function dictateHint() {
-    return "말로 입력을 누르고 말한 뒤, 같은 버튼(다시 눌러 적기)을 누르면 개역한글로 들어갑니다.";
+    return "음성입력을 누르고 말한 뒤, 입력 완료를 누르면 개역한글로 들어갑니다.";
   }
 
   function cleanHeard(text) {
@@ -415,19 +416,20 @@
     document.querySelectorAll("[data-act='dictate']").forEach((btn) => {
       btn.disabled = false;
       btn.classList.toggle("listening", on);
-      btn.textContent = on ? HEAR_LABEL : "말로 입력";
+      btn.textContent = on ? HEAR_LABEL : DICTATE_LABEL;
     });
   }
 
   function setHearNote(text) {
     const btn = document.querySelector("[data-act='dictate']");
-    if (!btn || !btn.parentElement) return;
+    const row = btn && (btn.closest(".actions") || btn);
+    if (!row || !row.parentElement) return;
     let note = document.getElementById("hear-note");
     if (!note) {
       note = document.createElement("p");
       note.id = "hear-note";
       note.className = "faint";
-      btn.parentElement.insertBefore(note, btn);
+      row.parentElement.insertBefore(note, row);
     }
     note.textContent = text;
   }
@@ -478,7 +480,7 @@
     transcribing = true;
     document.querySelectorAll("[data-act='dictate']").forEach((btn) => {
       btn.disabled = true;
-      btn.textContent = "받아 적는 중";
+      btn.textContent = "적는 중…";
     });
     setHearNote("받아 적는 중…");
   }
@@ -950,8 +952,16 @@
 
   function dictateButton() {
     if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && !window.SpeechRecognition && !window.webkitSpeechRecognition) return "";
-    if (transcribing) return '<button class="btn" type="button" data-act="dictate" disabled>받아 적는 중</button> ';
-    return '<button class="btn' + (hearing ? " listening" : "") + '" type="button" data-act="dictate">' + (hearing ? HEAR_LABEL : "말로 입력") + "</button> ";
+    if (transcribing) return '<button class="btn" type="button" data-act="dictate" disabled>적는 중…</button>';
+    return '<button class="btn' + (hearing ? " listening" : "") + '" type="button" data-act="dictate">' + (hearing ? HEAR_LABEL : DICTATE_LABEL) + "</button>";
+  }
+
+  function actions(hint) {
+    return '<div class="actions">' + dictateButton() + '<button class="btn gold" type="submit">확인</button>' + (hint || "") + "</div>";
+  }
+
+  function laterButton() {
+    return '<button class="link-btn" type="button" data-act="skip">이 절은 나중에</button>';
   }
 
   const unitCache = new Map();
@@ -2236,7 +2246,7 @@
       '<article class="card" style="margin-bottom:16px"><h3>머문 시간</h3>' + barChart(usage.map((item) => ({ v: item.v, tick: Number(item.key.slice(8)), label: item.key + " " + Math.round(item.v) + "분" }))) + "</article>" +
       '<article class="card" style="margin-bottom:16px"><h3>사용한 날</h3><div class="heat">' + heatHtml() + '</div><p class="faint">색이 진할수록 그 날의 점수, 곧 암송하고 기도하고 기록한 양이 큽니다.</p></article>' +
       '<article class="card" style="margin-bottom:16px"><h3>읽는 목소리</h3><p class="faint" id="voice-note">' + esc(voiceNote()) + '</p><div class="row"><select class="voice" data-act="voice">' + voiceOptionsHtml() + '</select><button class="btn" type="button" data-act="voice-sample">들어 보기</button></div></article>' +
-      '<article class="card" style="margin-bottom:16px"><h3>말로 입력 정확도</h3><p class="faint">Chrome·Edge에서는 브라우저의 음성인식을 먼저 씁니다. 그것을 쓸 수 없을 때 이 기기 안의 음성 모델이 받아 적습니다.</p><div class="row">' +
+      '<article class="card" style="margin-bottom:16px"><h3>음성입력 정확도</h3><p class="faint">Chrome·Edge에서는 브라우저의 음성인식을 먼저 씁니다. 그것을 쓸 수 없을 때 이 기기 안의 음성 모델이 받아 적습니다.</p><div class="row">' +
       [["base", "빠르게 · 기본", "처음 한 번 약 73MB"], ["small", "정확도 우선", "처음 한 번 약 238MB · 받아 적기 2~3배 느림"]].map(([key, name, info]) => '<button class="btn ' + ((state.earModel || "base") === key ? "gold" : "ghost") + '" type="button" data-act="ear-model" data-model="' + key + '" aria-pressed="' + ((state.earModel || "base") === key) + '">' + name + '<br><small class="faint">' + info + "</small></button>").join("") + "</div></article>" +
       syncCardHtml() +
       '<article class="card" style="margin-bottom:16px"><h3>기록 파일</h3><p class="faint">' + "계정과 별도로 지금 기록을 파일로 보관할 수 있습니다. 예전 주소에서 내보낸 파일을 가져오면 계정의 기록이 그 파일로 바뀝니다." + '</p><div class="row"><button class="btn" type="button" data-act="export">기록 내보내기</button><label class="btn ghost">기록 가져오기<input type="file" accept="application/json,.json" data-act="import" hidden></label></div></article>' +
@@ -2365,8 +2375,7 @@
       (windows > 1 && !step.done ? " (" + (windowStart / size + 1) + "/" + windows + " 묶음)" : "") + '</p><div class="answer-row">' +
       (picked || '<span class="faint">여기로 옮깁니다</span>') + '</div><div class="bank ' + (step.shake ? "shake" : "") + '">' + bank + "</div>" +
       (step.hint >= 0 && !step.done ? '<p class="help">빛나는 조각이 다음 자리입니다.</p>' : "") +
-      (step.done ? '<p class="help">순서가 맞습니다.</p>' : "") +
-      '<button class="btn ghost" type="button" data-act="skip">이 절은 나중에</button>';
+      (step.done ? '<p class="help">순서가 맞습니다.</p>' : "") + laterButton();
   }
 
   function clozeStep() {
@@ -2379,8 +2388,7 @@
     });
     const bank = step.bank.filter((token) => !used.has(token.uid)).map((token) => '<button type="button" class="pill" data-act="fill" data-uid="' + esc(token.uid) + '">' + esc(token.word) + "</button>").join("");
     return "<h2>" + esc(refText(step.id)) + '</h2><div class="paper"><p class="scripture">' + line + '</p></div><div class="bank ' + (step.shake ? "shake" : "") + '">' + bank + "</div>" +
-      (step.misses ? '<p class="help">다른 말이 들어간 칸은 비워 두었습니다.</p>' : "") +
-      '<button class="btn ghost" type="button" data-act="skip">이 절은 나중에</button>';
+      (step.misses ? '<p class="help">다른 말이 들어간 칸은 비워 두었습니다.</p>' : "") + laterButton();
   }
 
   function recallStep() {
@@ -2389,7 +2397,8 @@
     const tail = tailOf(step.id);
     return "<h2>" + esc(refText(step.id)) + "</h2>" + (tail ? '<p class="faint">앞 절의 끝 · ' + esc(tail) + "</p>" : "") +
       (step.showSkeleton ? '<p class="skel">' + esc(E.skeleton(verse.text)) + "</p>" : "") +
-      '<form data-act="recall"><textarea name="text" rows="5" autocomplete="off" spellcheck="false" placeholder="힌트 없이, 개역한글 그대로 적어 보세요"' + (step.draftSpoken ? ' data-spoken="1"' : "") + ">" + esc(step.draft || "") + '</textarea><p class="faint">' + esc(dictateHint()) + '</p><p>' + dictateButton() + '<button class="btn gold" type="submit">확인해 보기</button> <button class="btn ghost" type="button" data-act="skip">이 절은 나중에</button></p></form>';
+      '<form data-act="recall"><textarea name="text" rows="5" autocomplete="off" spellcheck="false" placeholder="힌트 없이, 개역한글 그대로 적어 보세요"' + (step.draftSpoken ? ' data-spoken="1"' : "") + ">" + esc(step.draft || "") + '</textarea><p class="faint">' + esc(dictateHint()) + "</p>" +
+      actions('<button class="btn ghost" type="button" data-act="recall-hint"' + (step.showSkeleton ? " disabled" : "") + ">힌트</button>") + "</form>" + laterButton();
   }
 
   function examStep() {
@@ -2397,11 +2406,11 @@
     if (!question) return '<p>문제가 없습니다.</p><button class="btn" type="button" data-act="nav" data-page="home">돌아가기</button>';
     ensureOrder();
     if (question.kind === "full") {
-      return "<h2>" + esc(refText(question.id)) + '</h2><p class="help">개역한글 표기 그대로 적어 보세요. 말로 넣은 표기는 이 절에 맞게 고칩니다. ' + esc(dictateHint()) + '</p><form data-act="answer-full"><textarea name="text" rows="5" autocomplete="off" spellcheck="false" placeholder="본문을 적어 보세요"' + (question.draftSpoken ? ' data-spoken="1"' : "") + ">" + esc(question.draft || "") + '</textarea><p>' + dictateButton() + '<button class="btn gold" type="submit">확인해 보기</button></p></form>';
+      return "<h2>" + esc(refText(question.id)) + '</h2><p class="help">개역한글 표기 그대로 적어 보세요. 말로 넣은 표기는 이 절에 맞게 고칩니다. ' + esc(dictateHint()) + '</p><form data-act="answer-full"><textarea name="text" rows="5" autocomplete="off" spellcheck="false" placeholder="본문을 적어 보세요"' + (question.draftSpoken ? ' data-spoken="1"' : "") + ">" + esc(question.draft || "") + "</textarea>" + actions() + "</form>";
     }
     if (question.kind === "opening") {
       const prev = map.get(question.from);
-      return '<p class="help">앞 절입니다. 다음 절의 처음 여섯 단어를 적어 보세요.</p><div class="paper"><p>' + esc(prev.text) + '</p></div><form data-act="answer-opening"><textarea name="text" rows="3" autocomplete="off" spellcheck="false" placeholder="다음 절의 시작"' + (question.draftSpoken ? ' data-spoken="1"' : "") + ">" + esc(question.draft || "") + '</textarea><p>' + dictateButton() + '<button class="btn gold" type="submit">확인해 보기</button></p></form>';
+      return '<p class="help">앞 절입니다. 다음 절의 처음 여섯 단어를 적어 보세요.</p><div class="paper"><p>' + esc(prev.text) + '</p></div><form data-act="answer-opening"><textarea name="text" rows="3" autocomplete="off" spellcheck="false" placeholder="다음 절의 시작"' + (question.draftSpoken ? ' data-spoken="1"' : "") + ">" + esc(question.draft || "") + "</textarea>" + actions() + "</form>";
     }
     if (question.kind === "blanks") {
       const line = clozeLine(map.get(question.id).text, question.units, (unit, n) => {
@@ -2409,10 +2418,8 @@
         const value = (question.draftBlanks && question.draftBlanks[n]) || "";
         return '<input class="blank-input" name="u' + n + '" autocomplete="off" spellcheck="false" aria-label="빈칸 ' + (n + 1) + '" placeholder="' + esc(cue) + '" style="--len:' + Math.max(2, unit.answer.length) + '" value="' + esc(value) + '"' + (question.draftSpoken ? ' data-spoken="1"' : "") + ">";
       });
-      const hint = question.hinted
-        ? '<span class="faint">첫 소리를 보여 드렸습니다.</span>'
-        : '<button class="btn ghost" type="button" data-act="cloze-hint">첫 소리 보기</button>';
-      return "<h2>" + esc(refText(question.id)) + '</h2><p class="help">조사와 어미는 남겨 두었습니다. ○ 하나가 한 글자입니다.</p><form data-act="blanks"><div class="paper"><p class="scripture">' + line + '</p></div><p>' + dictateButton() + '<button class="btn gold" type="submit">확인해 보기</button> ' + hint + "</p></form>";
+      const hint = '<button class="btn ghost" type="button" data-act="cloze-hint"' + (question.hinted ? " disabled" : "") + ">힌트</button>";
+      return "<h2>" + esc(refText(question.id)) + '</h2><p class="help">조사와 어미는 남겨 두었습니다. ○ 하나가 한 글자이고, 힌트를 누르면 첫 소리가 보입니다.</p><form data-act="blanks"><div class="paper"><p class="scripture">' + line + "</p></div>" + actions(hint) + "</form>";
     }
     if (question.kind === "locate") {
       const verse = map.get(question.id);
@@ -2426,7 +2433,7 @@
       return '<button type="button" class="pill" data-act="unorder" data-pos="' + pos + '">' + esc(item.phrase) + "</button>";
     }).join("");
     const bank = remain.map((item) => '<button type="button" class="pill" data-act="take-order" data-id="' + item.id + '">' + esc(item.phrase) + "</button>").join("");
-    return '<h2>순서</h2><p class="help">처음 몇 단어를 보고, 장에 나오는 순서대로 놓아 보세요.</p><form data-act="order"><div class="answer-row">' + (answer || '<span class="faint">여기로 옮깁니다</span>') + '</div><div class="bank">' + bank + '</div><button class="btn gold" type="submit"' + (picked.length === question.items.length ? "" : " disabled") + ">이 순서로 확인</button></form>";
+    return '<h2>순서</h2><p class="help">처음 몇 단어를 보고, 장에 나오는 순서대로 놓아 보세요.</p><form data-act="order"><div class="answer-row">' + (answer || '<span class="faint">여기로 옮깁니다</span>') + '</div><div class="bank">' + bank + '</div><div class="actions"><button class="btn gold" type="submit"' + (picked.length === question.items.length ? "" : " disabled") + ">확인</button></div></form>";
   }
 
   function ensureOrder() {
@@ -2585,6 +2592,18 @@
     if (act === "fill") return fillCloze(el.dataset.uid);
     if (act === "unfill") {
       delete ui.session.step.filled[el.dataset.i];
+      render();
+      return;
+    }
+    if (act === "recall-hint") {
+      const step = ui.session && ui.session.step;
+      const field = document.querySelector("form[data-act='recall'] textarea");
+      if (!step) return;
+      if (field) {
+        step.draft = field.value;
+        step.draftSpoken = field.dataset.spoken === "1";
+      }
+      step.showSkeleton = true;
       render();
       return;
     }

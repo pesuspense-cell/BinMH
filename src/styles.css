@@ -33,7 +33,7 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
-body { background: transparent; position: relative; }
+body { background: transparent; position: relative; word-break: keep-all; overflow-wrap: break-word; }
 body::before, body::after { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; }
 body::before { background: url("night.svg?v=2") center / cover no-repeat, var(--sky); }
 body::after { z-index: -1; background: linear-gradient(180deg, rgba(5, 12, 34, 0.12), rgba(5, 12, 34, 0.42) 70%, rgba(5, 12, 34, 0.6)); }
@@ -166,6 +166,14 @@ h3 { font-weight: 650; letter-spacing: -0.01em; }
 .pick blockquote { margin: 0; font-size: 20px; line-height: 1.7; letter-spacing: -0.02em; }
 .why { color: var(--muted); line-height: 1.55; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.actions { display: flex; gap: 8px; margin: 14px 0 4px; }
+.actions .btn { flex: 1 1 0; min-width: 0; padding: 12px 10px; white-space: nowrap; text-align: center; }
+.actions .btn.gold { flex-grow: 1.4; }
+.link-btn {
+  display: block; margin: 10px auto 0; border: 0; background: none; padding: 6px 10px;
+  color: var(--faint); font-size: 0.88rem; text-decoration: underline; text-underline-offset: 3px;
+}
+.link-btn:hover { color: var(--ink); }
 select.voice {
   border: 1px solid var(--line); background: var(--fill); border-radius: 999px;
   padding: 10px 14px; max-width: min(100%, 280px);
@@ -207,7 +215,7 @@ select.voice {
 .tag.ok { color: var(--good); font-weight: 700; }
 
 .panel { max-width: 760px; margin: 0 auto; }
-.scripture { font-size: 1.45rem; line-height: 1.75; letter-spacing: -0.02em; margin: 12px 0; word-break: keep-all; overflow-wrap: anywhere; }
+.scripture { font-size: 1.45rem; line-height: 1.75; letter-spacing: -0.02em; margin: 12px 0; }
 .paper {
   background: linear-gradient(160deg, rgba(247, 214, 90, 0.09), rgba(255, 255, 255, 0.04));
   border: 1px solid rgba(247, 214, 90, 0.22); border-radius: 20px; padding: 22px;
