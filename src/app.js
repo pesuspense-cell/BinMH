@@ -47,6 +47,7 @@
     syncError: "",
     syncBusy: false,
     syncEmail: "",
+    syncNote: "",
     syncKey: ""
   };
 
@@ -1553,29 +1554,38 @@
     return "서버 기록을 확인하는 중…";
   }
 
-  function syncFormHtml(info) {
-    const error = ui.syncError ? '<p class="error">' + esc(ui.syncError) + "</p>" : "";
+  function syncMessages() {
+    return (ui.syncError ? '<p class="error">' + esc(ui.syncError) + "</p>" : "") +
+      (ui.syncNote ? '<p class="muted">' + esc(ui.syncNote) + "</p>" : "");
+  }
+
+  function syncFormHtml() {
     const busy = ui.syncBusy ? " disabled" : "";
-    if (info.sent) {
-      return '<p class="muted">' + esc(info.pendingEmail) + " 으로 메일을 보냈습니다. 메일의 숫자 코드를 적거나, 메일의 링크를 지금 이 브라우저에서 여세요.</p>" +
-        '<form data-act="sync-code" class="row"><input class="textin" id="sync-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="메일의 숫자 코드"><button class="btn gold" type="submit"' + busy + '>로그인</button><button class="btn ghost" type="button" data-act="sync-restart">다른 이메일</button></form>' + error;
-    }
-    return '<form data-act="sync-email" class="row"><input class="textin" id="sync-email" name="email" type="email" autocomplete="email" placeholder="이메일 주소" value="' + esc(ui.syncEmail || info.pendingEmail || "") + '"><button class="btn gold" type="submit"' + busy + ">" + (ui.syncBusy ? "보내는 중…" : "코드 받기") + "</button></form>" + error;
+    return '<form data-act="sync-login" class="sync-form">' +
+      '<input class="textin" id="sync-email" name="email" type="email" autocomplete="username" placeholder="이메일 주소" value="' + esc(ui.syncEmail) + '">' +
+      '<input class="textin" id="sync-password" name="password" type="password" autocomplete="current-password" placeholder="비밀번호 (6자 이상)">' +
+      '<div class="row"><button class="btn gold" type="submit" name="mode" value="in"' + busy + '>로그인</button><button class="btn" type="submit" name="mode" value="up"' + busy + '>처음이에요, 가입하기</button><button class="btn ghost" type="button" data-act="sync-forgot"' + busy + ">비밀번호를 잊었어요</button></div></form>" + syncMessages();
+  }
+
+  function recoveryHtml() {
+    return '<p class="muted">새 비밀번호를 정해 주세요.</p><form data-act="sync-newpass" class="row"><input class="textin" id="sync-newpass" name="password" type="password" autocomplete="new-password" placeholder="새 비밀번호 (6자 이상)"><button class="btn gold" type="submit"' + (ui.syncBusy ? " disabled" : "") + ">비밀번호 바꾸기</button></form>" + syncMessages();
   }
 
   function syncCardHtml() {
     if (!syncOn()) return "";
     const info = S.status();
     let body;
-    if (info.signedIn) {
+    if (info.recovery) {
+      body = recoveryHtml();
+    } else if (info.signedIn) {
       body = '<p class="muted">' + esc(info.email) + ' 계정으로 기록을 서버에 보관합니다. 휴대폰과 PC에서 같은 이메일로 로그인하면 같은 기록을 이어 씁니다.</p>' +
         '<p class="sync-line ' + esc(info.phase) + '" id="sync-status">' + esc(syncLine(info)) + "</p>" +
         '<div class="row"><button class="btn" type="button" data-act="sync-now">지금 맞추기</button><button class="btn ghost" type="button" data-act="sync-out">로그아웃</button></div>';
     } else if (info.phase === "loading") {
       body = '<p class="faint" id="sync-status">동기화를 준비하는 중…</p>';
     } else {
-      body = '<p class="faint">이메일로 로그인하면 기록이 서버에 보관되어, 기기를 바꾸거나 브라우저 기록을 지워도 남습니다.</p>' +
-        (info.phase === "error" ? '<p class="error">' + esc(info.error) + "</p>" : "") + syncFormHtml(info);
+      body = '<p class="faint">이메일과 비밀번호로 로그인하면 기록이 서버에 보관되어, 기기를 바꾸거나 브라우저 기록을 지워도 남습니다. 휴대폰과 PC에서 같은 계정으로 로그인하세요.</p>' +
+        (info.phase === "error" ? '<p class="error">' + esc(info.error) + "</p>" : "") + syncFormHtml();
     }
     return '<article class="card" style="margin-bottom:16px"><h3>기기 사이 동기화</h3>' + body + "</article>";
   }
@@ -1583,9 +1593,10 @@
   function welcomeSyncHtml() {
     if (!syncOn()) return "";
     const info = S.status();
+    if (info.recovery) return '<article class="card welcome-sync"><h3>비밀번호 바꾸기</h3>' + recoveryHtml() + "</article>";
     if (info.signedIn) return '<article class="card welcome-sync"><p class="muted">' + esc(info.email) + ' 로 로그인했습니다. 서버에 기록이 없으면 여기서 새로 시작합니다.</p><p class="faint" id="sync-status">' + esc(syncLine(info)) + "</p></article>";
     if (info.phase === "loading") return "";
-    return '<article class="card welcome-sync"><h3>다른 기기에서 쓰던 기록이 있나요?</h3><p class="faint">그때 쓴 이메일로 로그인하면 기록을 불러옵니다.</p>' + syncFormHtml(info) + "</article>";
+    return '<article class="card welcome-sync"><h3>다른 기기에서 쓰던 기록이 있나요?</h3><p class="faint">그때 가입한 이메일과 비밀번호로 로그인하면 기록을 불러옵니다.</p>' + syncFormHtml() + "</article>";
   }
 
   function recordSummary(data) {
@@ -1606,7 +1617,7 @@
   }
 
   function syncKey(info) {
-    return [info.signedIn, info.phase === "loading", info.phase === "signed-out", !!info.conflict, info.sent].join("|");
+    return [info.signedIn, info.phase === "loading", info.phase === "signed-out", !!info.conflict, info.recovery].join("|");
   }
 
   function onSyncStatus() {
@@ -1614,7 +1625,7 @@
     const key = syncKey(info);
     if (key !== ui.syncKey) {
       ui.syncKey = key;
-      const typing = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.id !== "sync-code";
+      const typing = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) && !/^sync-/.test(document.activeElement.id);
       if (!typing || info.conflict) { render(); return; }
     }
     const line = document.getElementById("sync-status");
@@ -1640,48 +1651,55 @@
     if (syncOn()) ui.syncKey = syncKey(S.status());
   }
 
-  function syncEmail(form) {
-    const email = String(form.elements.email.value || "").trim();
-    ui.syncEmail = email;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      ui.syncError = "이메일 주소를 확인해 주세요.";
-      render();
-      return;
-    }
-    ui.syncError = "";
-    ui.syncBusy = true;
+  function syncSay(error, note, keep) {
+    ui.syncError = error || "";
+    ui.syncNote = note || "";
     render();
-    S.sendCode(email).then(() => {
+    if (keep) {
+      const field = document.getElementById(keep.id);
+      if (field) field.value = keep.value;
+    }
+  }
+
+  function syncRun(form, task, done, keepId) {
+    const keep = keepId && form.elements.password ? { id: keepId, value: form.elements.password.value } : null;
+    ui.syncBusy = true;
+    form.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    task().then((result) => {
       ui.syncBusy = false;
-      ui.syncKey = syncKey(S.status());
-      render();
-      const field = document.getElementById("sync-code");
-      if (field) field.focus();
+      done(result);
     }, (err) => {
       ui.syncBusy = false;
-      ui.syncError = err.message;
-      render();
+      syncSay(err.message, "", keep);
     });
   }
 
-  function syncCode(form) {
-    const code = String(form.elements.code.value || "").replace(/\D/g, "");
-    if (code.length < 6) {
-      ui.syncError = "메일에 있는 숫자 코드를 모두 적어 주세요.";
-      render();
-      return;
+  function syncLogin(form, mode) {
+    const email = String(form.elements.email.value || "").trim();
+    const password = String(form.elements.password.value || "");
+    ui.syncEmail = email;
+    const keep = { id: "sync-password", value: password };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return syncSay("이메일 주소를 확인해 주세요.", "", keep);
+    if (password.length < 6) return syncSay("비밀번호를 6자 이상 적어 주세요.", "", keep);
+    if (mode === "up") {
+      return syncRun(form, () => S.signUp(email, password), (waiting) => {
+        syncSay("", waiting ? email + " 으로 가입 확인 메일을 보냈습니다. 메일의 링크를 이 브라우저에서 연 뒤 로그인해 주세요." : "");
+      }, "sync-password");
     }
-    ui.syncError = "";
-    ui.syncBusy = true;
-    render();
-    S.verify(code).then(() => {
-      ui.syncBusy = false;
-      render();
-    }, (err) => {
-      ui.syncBusy = false;
-      ui.syncError = err.message;
-      render();
-    });
+    syncRun(form, () => S.signIn(email, password), () => syncSay("", ""), "sync-password");
+  }
+
+  function syncForgot(form) {
+    const email = String(form.elements.email.value || "").trim();
+    ui.syncEmail = email;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return syncSay("비밀번호를 바꿀 이메일 주소를 먼저 적어 주세요.");
+    syncRun(form, () => S.forgot(email), () => syncSay("", email + " 으로 비밀번호 재설정 메일을 보냈습니다. 메일의 링크를 이 브라우저에서 열어 주세요."));
+  }
+
+  function syncNewPassword(form) {
+    const password = String(form.elements.password.value || "");
+    if (password.length < 6) return syncSay("비밀번호를 6자 이상 적어 주세요.");
+    syncRun(form, () => S.newPassword(password), () => syncSay("", "비밀번호를 바꿨습니다."), "sync-newpass");
   }
 
   function resetAll() {
@@ -2339,9 +2357,9 @@
     if (act === "export") return exportState();
     if (act === "sync-pick") { S.resolve(el.dataset.side === "local" ? "local" : "remote"); render(); return; }
     if (act === "sync-now") { S.pull(); return; }
-    if (act === "sync-restart") { S.restart(); ui.syncError = ""; ui.syncKey = syncKey(S.status()); render(); return; }
+    if (act === "sync-forgot") { const form = el.closest("form"); if (form) syncForgot(form); return; }
     if (act === "sync-out") {
-      S.signOut().catch(() => {}).then(() => { ui.syncError = ""; render(); });
+      S.signOut().catch(() => {}).then(() => { ui.syncError = ""; ui.syncNote = ""; render(); });
       return;
     }
     if (act === "ear-model") {
@@ -2458,8 +2476,8 @@
     }
     if (act === "order") return acceptAnswer({ order: ui.session.orderPicked.slice() });
     if (act === "journal") return submitJournal(form);
-    if (act === "sync-email") return syncEmail(form);
-    if (act === "sync-code") return syncCode(form);
+    if (act === "sync-login") return syncLogin(form, event.submitter && event.submitter.value === "up" ? "up" : "in");
+    if (act === "sync-newpass") return syncNewPassword(form);
     if (act === "reset") {
       if (String(form.elements.word.value || "").trim() !== "초기화") {
         ui.confirm = { message: "기록을 지우려면 입력칸에 초기화라고 정확히 적어 주세요.", act: "noop" };

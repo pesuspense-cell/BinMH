@@ -331,6 +331,7 @@ textarea, .textin {
 .welcome-sync h3 { margin-top: 0; }
 .modal .choice { display: block; width: 100%; text-align: left; margin-bottom: 10px; line-height: 1.5; }
 .modal .choice small { font-weight: 400; opacity: 0.8; }
+.sync-form .textin { display: block; width: 100%; margin-bottom: 8px; }
 .sync-line { font-size: 14px; color: var(--faint); }
 .sync-line.saved { color: #2f8f5b; }
 .sync-line.error, .sync-line.conflict { color: var(--bad); }

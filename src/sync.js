@@ -15,7 +15,7 @@
   let lastPush = 0;
   let lastPull = 0;
   let conflict = null;
-  const view = { phase: "off", error: "", at: "", email: "", sent: false };
+  const view = { phase: "off", error: "", at: "", recovery: false };
 
   function configured() {
     return !!(cfg.supabaseUrl && cfg.supabaseKey);
@@ -58,7 +58,12 @@
   function words(err) {
     const text = String((err && (err.message || err.error_description)) || err || "");
     if (/rate limit|429|too many/i.test(text)) return "요청이 너무 잦습니다. 잠시 뒤 다시 시도해 주세요.";
-    if (/expired|invalid|otp|token/i.test(text)) return "코드가 맞지 않거나 시간이 지났습니다. 새 코드를 받아 주세요.";
+    if (/invalid login credentials/i.test(text)) return "이메일 또는 비밀번호가 맞지 않습니다. 처음이라면 가입하기를 눌러 주세요.";
+    if (/already registered|already exists/i.test(text)) return "이미 가입된 이메일입니다. 로그인을 눌러 주세요.";
+    if (/email not confirmed/i.test(text)) return "가입 확인 메일의 링크를 먼저 눌러 주세요.";
+    if (/password.*(at least|characters|weak)|weak.*password/i.test(text)) return "비밀번호를 6자 이상, 더 복잡하게 정해 주세요.";
+    if (/valid email|email address.*invalid/i.test(text)) return "이메일 주소를 확인해 주세요.";
+    if (/expired|invalid|otp|token/i.test(text)) return "링크가 맞지 않거나 시간이 지났습니다. 다시 요청해 주세요.";
     if (/fetch|network|load failed/i.test(text)) return "서버에 닿지 못했습니다. 인터넷 연결을 확인해 주세요.";
     if (/relation|does not exist|schema cache/i.test(text)) return "서버에 기록 표가 아직 없습니다. 설정 SQL을 실행해 주세요.";
     if (/row-level security|permission/i.test(text)) return "서버가 저장을 막았습니다. 표의 보안 정책을 확인해 주세요.";
@@ -102,6 +107,7 @@
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: hooks.key + ":auth" }
     });
     client.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") view.recovery = true;
       setTimeout(() => signedIn(session ? session.user : null), 0);
     });
   }
@@ -116,7 +122,6 @@
     const same = user && user.id === next.id;
     user = next;
     if (same) return;
-    view.sent = false;
     if (meta.uid !== next.id) {
       meta = { uid: next.id, rev: 0, dirty: true };
       lastJson = null;
@@ -239,22 +244,37 @@
     push();
   }
 
-  async function sendCode(email) {
+  function ready() {
     if (!client) throw new Error("동기화 도구를 아직 불러오는 중입니다. 잠시 뒤 다시 눌러 주세요.");
-    const res = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
-    if (res.error) throw new Error(words(res.error));
-    view.email = email;
-    view.sent = true;
   }
 
-  async function verify(code) {
-    if (!client) throw new Error("동기화 도구를 아직 불러오는 중입니다.");
-    const res = await client.auth.verifyOtp({ email: view.email, token: code, type: "email" });
+  async function signIn(email, password) {
+    ready();
+    const res = await client.auth.signInWithPassword({ email, password });
     if (res.error) throw new Error(words(res.error));
   }
 
-  function restart() {
-    view.sent = false;
+  async function signUp(email, password) {
+    ready();
+    const res = await client.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } });
+    if (res.error) throw new Error(words(res.error));
+    if (res.data && res.data.user && Array.isArray(res.data.user.identities) && !res.data.user.identities.length) {
+      throw new Error("이미 가입된 이메일입니다. 로그인을 눌러 주세요.");
+    }
+    return !res.data.session;
+  }
+
+  async function forgot(email) {
+    ready();
+    const res = await client.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if (res.error) throw new Error(words(res.error));
+  }
+
+  async function newPassword(password) {
+    ready();
+    const res = await client.auth.updateUser({ password });
+    if (res.error) throw new Error(words(res.error));
+    view.recovery = false;
   }
 
   async function signOut() {
@@ -269,13 +289,12 @@
       phase: view.phase,
       error: view.error,
       at: view.at,
-      sent: view.sent,
-      pendingEmail: view.email,
+      recovery: !!(view.recovery && user),
       email: user ? user.email : "",
       signedIn: !!user,
       conflict
     };
   }
 
-  window.LampSync = { init, touched, pull, resolve, sendCode, verify, restart, signOut, status, stable };
+  window.LampSync = { init, touched, pull, resolve, signIn, signUp, forgot, newPassword, signOut, status, stable };
 })();
