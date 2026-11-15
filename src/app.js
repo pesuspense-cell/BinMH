@@ -1815,7 +1815,7 @@
   }
 
   function logo() {
-    return '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3c2.2 3.2 5.2 5.2 5.2 8.4a5.2 5.2 0 1 1-10.4 0C10.8 8.2 13.8 6.2 16 3z" fill="#f0c14b"/><rect x="14.2" y="17" width="3.6" height="8" rx="1" fill="#171a2b"/><path d="M10 17.2h12l-1.3 2.2H11.3L10 17.2z" fill="#171a2b"/></svg>';
+    return '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3c2.2 3.2 5.2 5.2 5.2 8.4a5.2 5.2 0 1 1-10.4 0C10.8 8.2 13.8 6.2 16 3z" class="logo-flame"/><rect x="14.2" y="17" width="3.6" height="8" rx="1" class="logo-stand"/><path d="M10 17.2h12l-1.3 2.2H11.3L10 17.2z" class="logo-stand"/></svg>';
   }
 
   function diffHtml(input, answer, spoken) {
@@ -2071,7 +2071,7 @@
     const totalSeconds = Object.values(state.days).reduce((sum, log) => sum + (log.seconds || 0), 0);
     return '<div class="stats-head"><div><p class="eyebrow">쌓인 만큼</p><h1>기록</h1></div><div class="range"><button type="button" class="btn small ' + (ui.range === 14 ? "on" : "") + '" data-act="range" data-n="14">14일</button><button type="button" class="btn small ' + (ui.range === 30 ? "on" : "") + '" data-act="range" data-n="30">30일</button></div></div>' +
       '<section class="tiles"><article class="card tile"><span>연속</span><strong>' + activeStreak() + '일</strong><em class="faint">가장 길게 ' + longestStreak() + '일</em></article><article class="card tile"><span>외운 절</span><strong>' + knownCount() + '</strong><em class="faint">/ ' + list.length + '</em></article><article class="card tile"><span>전체 기도</span><strong>' + Math.round((possible ? got / possible : 0) * 100) + '%</strong><em class="faint">' + got + "/" + possible + '</em></article><article class="card tile"><span>머문 시간</span><strong>' + formatMinutes(totalSeconds) + '</strong><em class="faint">Lv.' + info.level + " " + esc(info.title) + "</em></article></section>" +
-      '<article class="card" style="margin-bottom:16px"><div class="stats-head"><h3>기도</h3>' + donut(possible ? got / possible : 0, "누적") + '</div><p class="muted">오전 · 한낮 · 저녁. 채운 자리는 올라오고, 빈 자리는 낮게 남습니다.</p>' + prayerChart(prayerDays) + '<p class="legend"><span><i style="background:#f0c14b"></i>오전</span><span><i style="background:#ef8b6a"></i>정오</span><span><i style="background:#6d5cff"></i>저녁</span></p><p class="faint">세 번을 채운 연속 ' + prayerStreak() + "일</p></article>" +
+      '<article class="card" style="margin-bottom:16px"><div class="stats-head"><h3>기도</h3>' + donut(possible ? got / possible : 0, "누적") + '</div><p class="muted">오전 · 한낮 · 저녁. 채운 자리는 올라오고, 빈 자리는 낮게 남습니다.</p>' + prayerChart(prayerDays) + '<p class="legend"><span><i class="morning"></i>오전</span><span><i class="noon"></i>정오</span><span><i class="evening"></i>저녁</span></p><p class="faint">세 번을 채운 연속 ' + prayerStreak() + "일</p></article>" +
       '<article class="card" style="margin-bottom:16px"><h3>외운 절 누적</h3>' + lineChart(mastery) + "</article>" +
       '<article class="card" style="margin-bottom:16px"><h3>맞힌 비율</h3>' + lineChart(accuracy, true) + '<p class="faint">그 날 확인한 문제가 있을 때만 점이 생깁니다.</p></article>' +
       '<article class="card" style="margin-bottom:16px"><h3>머문 시간</h3>' + barChart(usage.map((item) => ({ v: item.v, tick: Number(item.key.slice(8)), label: item.key + " " + Math.round(item.v) + "분" }))) + "</article>" +
@@ -2102,7 +2102,7 @@
     const max = Math.max(1, ...rows.map((row) => row.v || 0));
     return '<div class="bars">' + rows.map((row, index) => {
       const height = Math.max(2, Math.round(((row.v || 0) / max) * 100));
-      return '<div class="bar" title="' + esc(row.label || "") + '"><span class="grow" style="--h:' + height + '%;--i:' + index + ';background:#6d5cff"></span><em>' + esc(row.tick || "") + "</em></div>";
+      return '<div class="bar" title="' + esc(row.label || "") + '"><span class="grow" style="--h:' + height + '%;--i:' + index + '"></span><em>' + esc(row.tick || "") + "</em></div>";
     }).join("") + "</div>";
   }
 
@@ -2119,7 +2119,7 @@
       coords.push([12 + index * step, h - 24 - (point.v / max) * (h - 48)]);
     });
     if (coords.length === 1) {
-      return '<svg viewBox="0 0 ' + w + " " + h + '" class="chart"><circle cx="' + coords[0][0] + '" cy="' + coords[0][1] + '" r="5" fill="#6d5cff"></circle></svg>';
+      return '<svg viewBox="0 0 ' + w + " " + h + '" class="chart"><circle cx="' + coords[0][0] + '" cy="' + coords[0][1] + '" r="5" class="chart-dot"></circle></svg>';
     }
     let d = "";
     coords.forEach((coord, index) => { d += (index ? "L" : "M") + coord[0].toFixed(1) + " " + coord[1].toFixed(1) + " "; });
