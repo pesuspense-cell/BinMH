@@ -207,7 +207,7 @@ select.voice {
 .tag.ok { color: var(--good); font-weight: 700; }
 
 .panel { max-width: 760px; margin: 0 auto; }
-.scripture { font-size: 1.45rem; line-height: 1.75; letter-spacing: -0.02em; margin: 12px 0; }
+.scripture { font-size: 1.45rem; line-height: 1.75; letter-spacing: -0.02em; margin: 12px 0; word-break: keep-all; overflow-wrap: anywhere; }
 .paper {
   background: linear-gradient(160deg, rgba(247, 214, 90, 0.09), rgba(255, 255, 255, 0.04));
   border: 1px solid rgba(247, 214, 90, 0.22); border-radius: 20px; padding: 22px;
@@ -225,10 +225,21 @@ select.voice {
 .answer-row { background: rgba(255, 255, 255, 0.04); border-radius: 16px; padding: 10px; border: 1px dashed var(--line-strong); }
 .blank { min-width: 72px; background: var(--star-soft); border-color: rgba(247, 214, 90, 0.3); }
 .blank.bad { background: var(--bad-soft); border-color: rgba(255, 152, 172, 0.45); }
+.blank { min-width: 0; padding: 4px 10px; margin: 2px 1px; letter-spacing: 0.04em; color: var(--ink); }
 .blank-input {
-  width: 7.2em; border: 0; border-bottom: 2px solid var(--star); background: var(--star-soft); padding: 2px 6px; margin: 0 2px;
-  border-radius: 6px; color: var(--ink);
+  width: calc(var(--len, 3) * 1.15em + 18px); max-width: 100%; border: 0; border-bottom: 2px solid var(--star); background: var(--star-soft);
+  padding: 2px 6px; margin: 2px 1px; border-radius: 6px; color: var(--ink); text-align: center;
 }
+.blank-input::placeholder { color: rgba(247, 214, 90, 0.55); letter-spacing: 0.06em; }
+.cz { white-space: nowrap; }
+.scripture b.hit { color: var(--star); font-weight: 650; }
+.scripture b.miss { color: #ffb3c1; font-weight: 650; }
+.pill.hint {
+  border-color: var(--star); background: var(--star-soft); color: var(--star);
+  box-shadow: 0 0 0 1px rgba(247, 214, 90, 0.4), 0 0 18px rgba(247, 214, 90, 0.45);
+  animation: hint-glow 1.6s ease-in-out infinite;
+}
+@keyframes hint-glow { 50% { box-shadow: 0 0 0 1px rgba(247, 214, 90, 0.25), 0 0 6px rgba(247, 214, 90, 0.2); } }
 textarea, .textin {
   width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 13px 14px; background: rgba(255, 255, 255, 0.07);
   color: var(--ink); resize: vertical; transition: border-color 0.2s, background-color 0.2s;
@@ -479,7 +490,7 @@ textarea:focus, .textin:focus { border-color: rgba(247, 214, 90, 0.55); backgrou
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chunk, .lamp.lit .flame, .seal.dim, .stones i.dim { animation: none; }
+  .chunk, .lamp.lit .flame, .seal.dim, .stones i.dim, .pill.hint { animation: none; }
   .chart-line { animation: none; stroke-dashoffset: 0; }
   .chart-area { animation: none; opacity: 1; }
   .ring { animation: none; stroke-dashoffset: calc(289 - 289 * var(--p)); }

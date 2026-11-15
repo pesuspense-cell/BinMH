@@ -70,16 +70,44 @@ list.forEach((verse) => {
 });
 const light = /^(?:은|는|이|가|을|를|의|또|그|곧|것이라|하시더라|하더라|아멘|자요|자라|가로되|가라사대)$/;
 list.forEach((verse) => {
-  [3, 9, 27].forEach((seed) => {
-    const w = E.words(verse.text);
-    const picks = E.pickBlanks(verse.text, 3, seed);
-    assert(new Set(picks).size === picks.length, "dup blank " + verse.id);
-    picks.forEach((i) => {
-      const word = w[i].replace(/[.,]/g, "");
-      if (w.length >= 6) assert(!light.test(word), "light blank " + verse.id + " " + word);
+  const w = E.words(verse.text);
+  [0, 1, 2].forEach((level) => {
+    [3, 9, 27].forEach((seed) => {
+      const units = E.pickCloze(verse.text, level, seed);
+      const answers = units.map((u) => E.normalize(u.answer));
+      assert(new Set(answers).size === answers.length, "dup blank " + verse.id);
+      units.forEach((u, k) => {
+        assert(u.j > u.i && (k === 0 || units[k - 1].j <= u.i), "overlap " + verse.id);
+        const joined = u.before + u.answer + u.after;
+        assert(E.normalize(joined) === E.normalize(w.slice(u.i, u.j).join("")), "unit text " + verse.id + " " + joined);
+        if (w.length >= 6) assert(!light.test(u.answer), "light blank " + verse.id + " " + u.answer);
+      });
     });
   });
 });
+const units11 = E.clozeUnits(list[0].text);
+assert(units11.some((u) => u.answer === "예수 그리스도" && u.after === "의"), "1:1 keeps 의 " + JSON.stringify(units11));
+assert(units11.some((u) => u.answer === "계시" && u.after === "라"), "1:1 계시 " + JSON.stringify(units11));
+const cloze11 = E.pickCloze(list[0].text, 0, 5);
+assert(cloze11.length >= 4, "1:1 blanks " + cloze11.length);
+const picked11 = new Set();
+for (let seed = 1; seed <= 20; seed++) E.pickCloze(list[0].text, 0, seed).forEach((u) => picked11.add(u.answer));
+assert(picked11.has("예수 그리스도") && picked11.has("하나님"), "1:1 key words get picked");
+assert(E.pickCloze(list[0].text, 2, 5).length >= cloze11.length, "deeper level blanks more");
+const unit1220 = E.clozeUnits(list.find((v) => v.id === "1:12").text);
+assert(unit1220.some((u) => u.answer === "일곱 금 촛대" && u.after === "를"), "1:12 phrase unit");
+assert(!E.clozeUnits(list.find((v) => v.id === "1:1").text).some((u) => u.kind === "number"), "천사 is not a number");
+assert(E.chosung("예수 그리스도") === "ㅇㅅ ㄱㄹㅅㄷ", "chosung");
+
+for (let seed = 1; seed <= 200; seed++) {
+  const ids = [0, 1, 2, 3, 4];
+  const mixed = E.scramble(ids, seed);
+  assert(mixed.slice().sort().join() === ids.join(), "scramble keeps items");
+  assert(mixed.every((v, k) => v !== k), "scramble fixed point " + mixed.join());
+}
+const firsts = new Set();
+for (let seed = 1; seed <= 60; seed++) firsts.add(E.scramble([0, 1, 2, 3, 4, 5], seed)[0]);
+assert(firsts.size >= 4, "scramble varies first item");
 
 for (let chapter = 1; chapter <= 22; chapter++) {
   const qs = E.buildChapterQuestions(list, chapter, 3, 4);
@@ -88,6 +116,8 @@ for (let chapter = 1; chapter <= 22; chapter++) {
     const phrases = q.items.map((item) => item.phrase);
     assert(new Set(phrases).size === phrases.length, "dup phrase ch " + chapter);
     assert(q.items.length >= 2, "order size");
+    assert(q.bank.length === q.items.length && q.bank.slice().sort().join() === q.items.map((item) => item.id).sort().join(), "order bank " + chapter);
+    assert(q.bank.join() !== q.items.map((item) => item.id).join(), "order bank shuffled " + chapter);
   });
 }
 
@@ -100,9 +130,17 @@ assert(E.grade(fullQ, { text: fullVerse.text }, list).pass, "full grade");
 const blankQ = daily.find((q) => q.kind === "blanks");
 const blankVerse = list.find((v) => v.id === blankQ.id);
 const given = {};
-const blankWords = E.words(blankVerse.text);
-blankQ.blanks.forEach((index) => { given[index] = blankWords[index]; });
-assert(E.grade(blankQ, { blanks: given }, list).pass, "blank grade");
+const withParticle = {};
+blankQ.units.forEach((unit, n) => {
+  given[n] = unit.answer;
+  withParticle[n] = unit.answer + unit.after;
+});
+assert(blankVerse && E.grade(blankQ, { blanks: given }, list).pass, "blank grade");
+assert(E.grade(blankQ, { blanks: withParticle }, list).pass, "blank grade with particle");
+const hinted = E.grade(blankQ, { blanks: given, hinted: true }, list);
+assert(hinted.pass && hinted.score < 1, "hint lowers score");
+assert(!E.grade(blankQ, { blanks: {} }, list).pass, "empty blanks fail");
+assert(E.heardFit("예수 그리스도의 계시라", list[0].text) > E.heardFit("예수 그리스도의 게시판", list[0].text), "heard fit");
 
 const rec = E.recommend(list, {}, "2026-11-04");
 assert(rec.id === "1:1", "recommend first " + rec.id);

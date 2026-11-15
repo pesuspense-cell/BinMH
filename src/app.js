@@ -14,8 +14,8 @@
 
   const PHASE_HELP = {
     read: "눈으로만 스치지 않도록, 덩어리를 따라 소리 내어 읽습니다.",
-    chunk: "긴 절을 짧은 단위로 나누면 기억이 붙잡습니다. 보이는 조각을 순서대로 놓아 보세요.",
-    cloze: "빠진 말을 스스로 채울 때, 읽기만 할 때보다 오래 남습니다.",
+    chunk: "한 번에 붙잡을 수 있는 건 네다섯 덩어리입니다. 긴 절은 묶음으로 나눠, 보이는 조각부터 순서대로 놓아 보세요.",
+    cloze: "핵심어만 비우고 조사와 어미는 단서로 남겼습니다. 스스로 떠올린 말이 읽기만 한 말보다 오래 남습니다.",
     recall: "힌트 없이 적어야 정말 외운 것입니다. 띄어쓰기는 달라도 됩니다.",
     review: "잊기 직전에 다시 꺼냅니다. 간격은 1일, 3일, 7일, 그 뒤로 조금씩 늘어납니다.",
     exam: "방금 외운 절을 다른 문제와 섞어, 힌트 없이 다시 확인합니다.",
@@ -87,6 +87,8 @@
       if (!raw) return null;
       const session = JSON.parse(raw);
       if (!session || session.phase === "done") return null;
+      const stale = (item) => item && (item.blanks || item.kind === "blanks" && !item.units);
+      if (stale(session.step) || (session.queue || []).some(stale)) return null;
       return session;
     } catch (err) {
       return null;
@@ -646,9 +648,28 @@
     if (!question) return "";
     const verse = map.get(question.id);
     if (!verse) return "";
-    if (question.kind === "full") return verse.text;
+    if (question.kind === "full" || question.kind === "blanks") return verse.text;
     if (question.kind === "opening") return E.words(verse.text).slice(0, 6).join(" ");
     return "";
+  }
+
+  function pickHeard(current) {
+    const segs = (current.segs || []).concat(current.live || []);
+    if (!segs.length) return current.finals + " " + current.session;
+    const target = heardTarget(current.form);
+    return segs.map((alts) => {
+      if (!target || alts.length < 2) return alts[0];
+      let best = alts[0];
+      let top = -1;
+      alts.forEach((alt, rank) => {
+        const fit = E.heardFit(alt, target) - rank * 0.02;
+        if (fit > top) {
+          top = fit;
+          best = alt;
+        }
+      });
+      return best;
+    }).join(" ");
   }
 
   function writeHeard(form, said) {
@@ -671,9 +692,16 @@
     const whole = parts.length >= Math.max(4, Math.floor(verseWords.length / 2));
     const slots = whole ? E.alignHeard(said, verseWords.join(" ")) : null;
     let placed = false;
-    question.blanks.forEach((index, n) => {
-      const input = form.elements["b" + index];
-      const word = whole ? slots[index] : parts[n] ? E.toClassic(parts[n], verseWords[index]) : "";
+    question.units.forEach((unit, n) => {
+      const input = form.elements["u" + n];
+      let word = "";
+      if (whole) {
+        const span = slots.slice(unit.i, unit.j);
+        const same = E.normalize(span.join("")) === E.normalize(verseWords.slice(unit.i, unit.j).join(""));
+        if (span.every(Boolean)) word = same ? unit.answer : span.join(" ");
+      } else if (parts[n]) {
+        word = E.toClassic(parts[n], unit.answer + E.normalize(unit.after));
+      }
       if (input && word) {
         input.value = word;
         input.dataset.spoken = "1";
@@ -689,13 +717,24 @@
     current.rec = rec;
     current.finals = "";
     current.session = "";
+    current.segs = [];
+    current.live = [];
     rec.lang = "ko-KR";
     rec.continuous = true;
     rec.interimResults = true;
+    rec.maxAlternatives = 5;
     rec.onresult = (event) => {
-      let text = "";
-      for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript + " ";
-      current.session = text.replace(/\s+/g, " ").trim();
+      const heard = [];
+      for (let i = 0; i < event.results.length; i++) {
+        const alts = [];
+        for (let k = 0; k < event.results[i].length; k++) {
+          const said = String(event.results[i][k].transcript || "").trim();
+          if (said) alts.push(said);
+        }
+        if (alts.length) heard.push(alts);
+      }
+      current.live = heard;
+      current.session = heard.map((alts) => alts[0]).join(" ").replace(/\s+/g, " ").trim();
       const live = (current.finals + " " + current.session).trim();
       if (dict === current && live) setHearNote("들은 말: " + live);
     };
@@ -705,6 +744,8 @@
     rec.onend = () => {
       current.finals = (current.finals + " " + current.session).trim();
       current.session = "";
+      current.segs = current.segs.concat(current.live);
+      current.live = [];
       if (current.onCloudEnd) current.onCloudEnd();
       if (dict === current && !current.closing && !current.cloudDead) {
         try { rec.start(); } catch (err) { current.cloudDead = true; }
@@ -784,7 +825,7 @@
       const raw = stopCapture(current.recorder);
       current.stream.getTracks().forEach((track) => track.stop());
       await cloudDone;
-      said = cleanHeard(current.finals + " " + current.session);
+      said = cleanHeard(pickHeard(current));
       if (!said) {
         const samples = prepareSamples(raw, current.recorder.rate);
         if (!samples) reason = "녹음된 소리가 너무 짧습니다. 말한 뒤에 버튼을 눌러 주세요.";
@@ -817,15 +858,22 @@
     }
     const blanksForm = document.querySelector("form[data-act='blanks']");
     if (blanksForm && question && question.kind === "blanks") {
-      question.draftBlanks = {};
-      question.draftSpoken = false;
-      question.blanks.forEach((index) => {
-        const input = blanksForm.elements["b" + index];
-        if (!input) return;
-        question.draftBlanks[index] = input.value;
-        if (input.dataset.spoken === "1") question.draftSpoken = true;
-      });
+      const read = readBlanks(blanksForm, question);
+      question.draftBlanks = read.blanks;
+      question.draftSpoken = read.spoken;
     }
+  }
+
+  function readBlanks(form, question) {
+    const blanks = {};
+    let spoken = false;
+    (question.units || []).forEach((_, n) => {
+      const input = form.elements["u" + n];
+      if (!input) return;
+      blanks[n] = input.value;
+      if (input.dataset.spoken === "1") spoken = true;
+    });
+    return { blanks, spoken };
   }
 
   function dictateButton() {
@@ -834,12 +882,16 @@
     return '<button class="btn' + (hearing ? " listening" : "") + '" type="button" data-act="dictate">' + (hearing ? HEAR_LABEL : "말로 입력") + "</button> ";
   }
 
-  function wordPool(id) {
+  const unitCache = new Map();
+  const CHUNK_WINDOW = 5;
+
+  function clozePool(id) {
     const verse = map.get(id);
     const bag = [];
     list.forEach((item) => {
       if (Math.abs(item.chapter - verse.chapter) > 1 || item.id === id) return;
-      E.words(item.text).forEach((word) => bag.push(word));
+      if (!unitCache.has(item.id)) unitCache.set(item.id, E.clozeUnits(item.text).filter((unit) => unit.score >= 3));
+      unitCache.get(item.id).forEach((unit) => bag.push(unit));
     });
     return bag;
   }
@@ -847,8 +899,29 @@
   function production(id, salt) {
     const verse = map.get(id);
     const seed = E.hash(id + ":" + salt + ":" + today());
-    if (E.words(verse.text).length <= 18) return { kind: "full", id, qid: "f" + id + ":" + salt };
-    return { kind: "blanks", id, blanks: E.pickBlanks(verse.text, 3, seed), qid: "b" + id + ":" + salt };
+    const stage = (state.cards[id] && state.cards[id].stage) || 0;
+    const units = E.words(verse.text).length <= 18 ? [] : E.pickCloze(verse.text, stage >= 3 ? 2 : 1, seed);
+    if (!units.length) return { kind: "full", id, qid: "f" + id + ":" + salt };
+    return { kind: "blanks", id, units, qid: "b" + id + ":" + salt };
+  }
+
+  function clozeLine(text, units, blank) {
+    const verseWords = E.words(text);
+    const out = [];
+    let n = 0;
+    for (let i = 0; i < verseWords.length; i++) {
+      const unit = units[n];
+      if (unit && unit.i === i) {
+        out.push('<span class="cz">' + esc(unit.before) + blank(unit, n) + esc(unit.after) + "</span>");
+        i = unit.j - 1;
+        n += 1;
+      } else out.push("<span>" + esc(verseWords[i]) + "</span>");
+    }
+    return out.join(" ");
+  }
+
+  function syllableMask(answer) {
+    return answer.replace(/[^\s]/g, "○");
   }
 
   function baseSession(kind) {
@@ -995,15 +1068,24 @@
       return;
     }
     session.phase = "chunk";
+    const seed = E.hash(verse.id + ":chunk:" + Date.now());
+    const size = Math.ceil(chunks.length / Math.ceil(chunks.length / CHUNK_WINDOW));
+    const bank = [];
+    for (let start = 0; start < chunks.length; start += size) {
+      const part = chunks.slice(start, start + size).map((_, k) => start + k);
+      E.scramble(part, seed + start).forEach((index) => bank.push(index));
+    }
     session.step = {
       id: verse.id,
       chunks,
       picked: [],
-      bank: E.seededShuffle(chunks.map((_, index) => index), E.hash(verse.id + "chunk")),
+      bank,
+      size,
       errors: 0,
+      missHere: 0,
+      hint: -1,
       done: false,
-      shake: false,
-      hinted: false
+      shake: false
     };
   }
 
@@ -1011,13 +1093,18 @@
     const session = ui.session;
     const id = session.step.id;
     const verse = map.get(id);
-    const blanks = E.pickBlanks(verse.text, 3, E.hash(verse.id + "cloze"));
+    const seed = E.hash(id + ":cloze:" + Date.now());
+    const units = E.pickCloze(verse.text, 0, seed);
+    if (!units.length) {
+      beginRecall();
+      return;
+    }
     session.phase = "cloze";
     session.step = {
       id,
-      blanks,
+      units,
       filled: {},
-      bank: E.makeClozeBank(verse.text, blanks, wordPool(id), E.hash(verse.id + "bank")),
+      bank: E.makeClozeBank(units, clozePool(id), seed + 7),
       misses: 0,
       done: false,
       shake: false,
@@ -1037,18 +1124,17 @@
     if (!step || step.done || step.picked.includes(index)) return;
     if (index === step.picked.length) {
       step.picked.push(index);
+      step.missHere = 0;
+      step.hint = -1;
       if (step.picked.length === step.chunks.length) {
         step.done = true;
         schedule(420, () => beginCloze());
       }
     } else {
       step.errors += 1;
+      step.missHere = (step.missHere || 0) + 1;
       step.shake = true;
-      if (step.errors >= 4 && step.picked.length === 0) {
-        step.picked = [0];
-        step.errors = 0;
-        step.hinted = true;
-      }
+      if (step.missHere >= 2) step.hint = step.picked.length;
     }
     render();
   }
@@ -1057,16 +1143,15 @@
     const step = ui.session.step;
     if (!step || step.done) return;
     if (Object.values(step.filled).includes(uid)) return;
-    const next = step.blanks.find((index) => !step.filled[index]);
-    if (next == null) return;
+    const next = step.units.findIndex((_, n) => !step.filled[n]);
+    if (next < 0) return;
     step.filled[next] = uid;
     step.wrong = [];
-    if (step.blanks.every((index) => step.filled[index])) {
-      const verseWords = E.words(map.get(step.id).text);
+    if (step.units.every((_, n) => step.filled[n])) {
       const wrong = [];
-      step.blanks.forEach((index) => {
-        const token = step.bank.find((item) => item.uid === step.filled[index]);
-        if (!token || E.normalize(token.word) !== E.normalize(verseWords[index])) wrong.push(index);
+      step.units.forEach((unit, n) => {
+        const token = step.bank.find((item) => item.uid === step.filled[n]);
+        if (!token || E.normalize(token.word) !== E.normalize(unit.answer)) wrong.push(n);
       });
       if (!wrong.length) {
         step.done = true;
@@ -1149,7 +1234,7 @@
     session.feedback = result;
     session.results.push(result);
     if (!result.pass && !question.repair && (question.kind === "full" || question.kind === "blanks")) {
-      session.queue.push(Object.assign({}, question, { repair: true, qid: question.qid + ":r" }));
+      session.queue.push(Object.assign({}, question, { repair: true, hinted: false, qid: question.qid + ":r" }));
     }
     const drilled = session.kind === "review" || session.kind === "spot" || session.kind === "single" || session.block === "review";
     if (drilled && (result.kind === "full" || result.kind === "blanks")) recordReview(result);
@@ -2195,25 +2280,29 @@
 
   function chunkStep() {
     const step = ui.session.step;
+    const size = step.size || step.chunks.length;
+    const windowStart = Math.floor(Math.min(step.picked.length, step.chunks.length - 1) / size) * size;
+    const windows = Math.ceil(step.chunks.length / size);
     const picked = step.picked.map((index, pos) => '<button type="button" class="pill" data-act="unchunk" data-pos="' + pos + '">' + esc(step.chunks[index]) + "</button>").join("");
-    const bank = step.bank.map((index) => step.picked.includes(index) ? "" : '<button type="button" class="pill" data-act="chunk" data-i="' + index + '">' + esc(step.chunks[index]) + "</button>").join("");
-    return "<h2>" + esc(refText(step.id)) + '</h2><p class="help">아래 조각을 위쪽 줄에 본문 순서대로 놓아 보세요. 놓은 조각을 누르면 빠집니다.</p><div class="answer-row">' +
+    const bank = step.bank
+      .filter((index) => !step.picked.includes(index) && index >= windowStart && index < windowStart + size)
+      .map((index) => '<button type="button" class="pill' + (index === step.hint ? " hint" : "") + '" data-act="chunk" data-i="' + index + '">' + esc(step.chunks[index]) + "</button>").join("");
+    return "<h2>" + esc(refText(step.id)) + '</h2><p class="help">아래 조각을 위쪽 줄에 본문 순서대로 놓아 보세요. 놓은 조각을 누르면 빠집니다.' +
+      (windows > 1 && !step.done ? " (" + (windowStart / size + 1) + "/" + windows + " 묶음)" : "") + '</p><div class="answer-row">' +
       (picked || '<span class="faint">여기로 옮깁니다</span>') + '</div><div class="bank ' + (step.shake ? "shake" : "") + '">' + bank + "</div>" +
-      (step.hinted ? '<p class="help">첫 덩어리를 깔아 두었습니다.</p>' : "") +
+      (step.hint >= 0 && !step.done ? '<p class="help">빛나는 조각이 다음 자리입니다.</p>' : "") +
       (step.done ? '<p class="help">순서가 맞습니다.</p>' : "") +
       '<button class="btn ghost" type="button" data-act="skip">이 절은 나중에</button>';
   }
 
   function clozeStep() {
     const step = ui.session.step;
-    const verseWords = E.words(map.get(step.id).text);
     const used = new Set(Object.values(step.filled));
-    const line = verseWords.map((word, index) => {
-      if (!step.blanks.includes(index)) return "<span>" + esc(word) + "</span>";
-      const token = step.filled[index] ? step.bank.find((item) => item.uid === step.filled[index]) : null;
-      const bad = step.wrong && step.wrong.includes(index);
-      return '<button type="button" class="blank ' + (bad ? "bad" : "") + '" data-act="unfill" data-i="' + index + '">' + (token ? esc(token.word) : "　　") + "</button>";
-    }).join(" ");
+    const line = clozeLine(map.get(step.id).text, step.units, (unit, n) => {
+      const token = step.filled[n] ? step.bank.find((item) => item.uid === step.filled[n]) : null;
+      const bad = step.wrong && step.wrong.includes(n);
+      return '<button type="button" class="blank ' + (bad ? "bad" : "") + '" data-act="unfill" data-i="' + n + '">' + (token ? esc(token.word) : esc(syllableMask(unit.answer))) + "</button>";
+    });
     const bank = step.bank.filter((token) => !used.has(token.uid)).map((token) => '<button type="button" class="pill" data-act="fill" data-uid="' + esc(token.uid) + '">' + esc(token.word) + "</button>").join("");
     return "<h2>" + esc(refText(step.id)) + '</h2><div class="paper"><p class="scripture">' + line + '</p></div><div class="bank ' + (step.shake ? "shake" : "") + '">' + bank + "</div>" +
       (step.misses ? '<p class="help">다른 말이 들어간 칸은 비워 두었습니다.</p>' : "") +
@@ -2241,11 +2330,15 @@
       return '<p class="help">앞 절입니다. 다음 절의 처음 여섯 단어를 적어 보세요.</p><div class="paper"><p>' + esc(prev.text) + '</p></div><form data-act="answer-opening"><textarea name="text" rows="3" autocomplete="off" spellcheck="false" placeholder="다음 절의 시작"' + (question.draftSpoken ? ' data-spoken="1"' : "") + ">" + esc(question.draft || "") + '</textarea><p>' + dictateButton() + '<button class="btn gold" type="submit">확인해 보기</button></p></form>';
     }
     if (question.kind === "blanks") {
-      const verseWords = E.words(map.get(question.id).text);
-      const line = verseWords.map((word, index) => question.blanks.includes(index)
-        ? '<input class="blank-input" name="b' + index + '" autocomplete="off" spellcheck="false" aria-label="빈칸" value="' + esc((question.draftBlanks && question.draftBlanks[index]) || "") + '"' + (question.draftSpoken ? ' data-spoken="1"' : "") + ">"
-        : "<span>" + esc(word) + "</span>").join(" ");
-      return "<h2>" + esc(refText(question.id)) + '</h2><form data-act="blanks"><div class="paper"><p class="scripture">' + line + '</p></div><p>' + dictateButton() + '<button class="btn gold" type="submit">확인해 보기</button></p></form>';
+      const line = clozeLine(map.get(question.id).text, question.units, (unit, n) => {
+        const cue = question.hinted ? E.chosung(unit.answer) : syllableMask(unit.answer);
+        const value = (question.draftBlanks && question.draftBlanks[n]) || "";
+        return '<input class="blank-input" name="u' + n + '" autocomplete="off" spellcheck="false" aria-label="빈칸 ' + (n + 1) + '" placeholder="' + esc(cue) + '" style="--len:' + Math.max(2, unit.answer.length) + '" value="' + esc(value) + '"' + (question.draftSpoken ? ' data-spoken="1"' : "") + ">";
+      });
+      const hint = question.hinted
+        ? '<span class="faint">첫 소리를 보여 드렸습니다.</span>'
+        : '<button class="btn ghost" type="button" data-act="cloze-hint">첫 소리 보기</button>';
+      return "<h2>" + esc(refText(question.id)) + '</h2><p class="help">조사와 어미는 남겨 두었습니다. ○ 하나가 한 글자입니다.</p><form data-act="blanks"><div class="paper"><p class="scripture">' + line + '</p></div><p>' + dictateButton() + '<button class="btn gold" type="submit">확인해 보기</button> ' + hint + "</p></form>";
     }
     if (question.kind === "locate") {
       const verse = map.get(question.id);
@@ -2253,7 +2346,7 @@
         question.choices.map((id) => '<button type="button" data-act="locate" data-choice="' + id + '">' + esc(refText(id)) + "</button>").join("") + "</div>";
     }
     const picked = ui.session.orderPicked;
-    const remain = question.items.filter((item) => !picked.includes(item.id));
+    const remain = question.bank.filter((id) => !picked.includes(id)).map((id) => question.items.find((item) => item.id === id));
     const answer = picked.map((id, pos) => {
       const item = question.items.find((entry) => entry.id === id);
       return '<button type="button" class="pill" data-act="unorder" data-pos="' + pos + '">' + esc(item.phrase) + "</button>";
@@ -2266,6 +2359,7 @@
     const question = currentQuestion();
     const session = ui.session;
     if (!question || question.kind !== "order") return;
+    if (!question.bank) question.bank = E.scramble(question.items.map((item) => item.id), E.hash(question.qid + ":" + Date.now()));
     if (session.orderFor !== question.qid) {
       session.orderFor = question.qid;
       session.orderPicked = [];
@@ -2278,12 +2372,10 @@
       const answer = fb.kind === "opening" ? (fb.target || E.words(map.get(fb.id).text).slice(0, fb.n).join(" ")) : map.get(fb.id).text;
       detail = '<p class="diff">' + diffHtml(fb.input, answer, fb.spoken) + '</p><p class="faint">본문</p><p>' + esc(map.get(fb.id).text) + "</p>";
     } else if (fb.kind === "blanks") {
-      const verseWords = E.words(map.get(fb.id).text);
-      detail = "<p>" + fb.blanks.map((index) => {
-        const mine = fb.given ? fb.given[index] : "";
-        const ok = fb.spoken ? E.spokenSimilarity(mine, verseWords[index]) >= 0.9 : E.normalize(mine) === E.normalize(verseWords[index]);
-        return '<span class="' + (ok ? "" : "miss") + '">' + esc(verseWords[index]) + "</span>";
-      }).join(" · ") + "</p><p>" + esc(map.get(fb.id).text) + "</p>";
+      const wrong = new Set(fb.wrong || []);
+      detail = '<p class="scripture">' + clozeLine(map.get(fb.id).text, fb.units || [], (unit, n) =>
+        '<b class="' + (wrong.has(n) ? "miss" : "hit") + '">' + esc(unit.answer) + "</b>") + "</p>" +
+        (wrong.size ? '<p class="faint">붉은 말이 놓친 곳입니다. 앞뒤 말과 함께 한 번 소리 내어 읽어 보세요.</p>' : "");
     } else if (fb.kind === "locate") {
       detail = "<p>위치는 " + esc(refText(fb.id)) + "입니다.</p><p>" + esc(map.get(fb.id).text) + "</p>";
     } else if (fb.kind === "order") {
@@ -2422,6 +2514,17 @@
       render();
       return;
     }
+    if (act === "cloze-hint") {
+      const question = currentQuestion();
+      const form = el.closest("form");
+      if (!question || question.kind !== "blanks" || !form) return;
+      const read = readBlanks(form, question);
+      question.draftBlanks = read.blanks;
+      question.draftSpoken = read.spoken;
+      question.hinted = true;
+      render();
+      return;
+    }
     if (act === "skip") return skipVerse();
     if (act === "locate") return acceptAnswer({ choice: el.dataset.choice });
     if (act === "take-order") {
@@ -2505,14 +2608,8 @@
     if (act === "recall") return submitRecall(form.elements.text.value, form.elements.text.dataset.spoken === "1");
     if (act === "answer-full" || act === "answer-opening") return acceptAnswer({ text: form.elements.text.value, spoken: form.elements.text.dataset.spoken === "1" });
     if (act === "blanks") {
-      const blanks = {};
-      let spoken = false;
-      currentQuestion().blanks.forEach((index) => {
-        const input = form.elements["b" + index];
-        blanks[index] = input.value;
-        if (input.dataset.spoken === "1") spoken = true;
-      });
-      return acceptAnswer({ blanks, spoken });
+      const question = currentQuestion();
+      return acceptAnswer(Object.assign(readBlanks(form, question), { hinted: !!question.hinted }));
     }
     if (act === "order") return acceptAnswer({ order: ui.session.orderPicked.slice() });
     if (act === "journal") return submitJournal(form);

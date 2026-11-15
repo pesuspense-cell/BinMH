@@ -271,17 +271,53 @@
     return h >>> 0;
   }
 
+  function rng(seed) {
+    let s = (seed >>> 0) ^ 0x9e3779b9;
+    return () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
   function seededShuffle(arr, seed) {
     const a = arr.slice();
-    let s = seed >>> 0;
+    const next = rng(seed);
     for (let i = a.length - 1; i > 0; i--) {
-      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-      const j = s % (i + 1);
+      const j = Math.floor(next() * (i + 1));
       const tmp = a[i];
       a[i] = a[j];
       a[j] = tmp;
     }
     return a;
+  }
+
+  function orderliness(perm) {
+    let score = 0;
+    perm.forEach((value, k) => {
+      if (value === k) score += 1;
+      if (k > 0 && value === perm[k - 1] + 1) score += 1;
+    });
+    return score;
+  }
+
+  function scramble(arr, seed) {
+    if (arr.length < 2) return arr.slice();
+    if (arr.length === 2) return [arr[1], arr[0]];
+    let best = null;
+    let bestScore = Infinity;
+    const base = arr.map((_, i) => i);
+    for (let t = 0; t < 96 && bestScore > 0; t++) {
+      const perm = seededShuffle(base, (seed >>> 0) + t * 7919);
+      const score = orderliness(perm);
+      if (score < bestScore) {
+        best = perm;
+        bestScore = score;
+      }
+    }
+    return best.map((i) => arr[i]);
   }
 
   function unique(arr) {
@@ -297,6 +333,7 @@
 
   function flatten(bible) {
     const list = [];
+    if (bible && bible.chapters) learnNouns(bible.chapters.flatMap((ch) => ch.verses.map((verse) => verse.t)));
     bible.chapters.forEach((ch) => {
       ch.verses.forEach((verse) => {
         list.push({
@@ -552,47 +589,218 @@
     return 0;
   }
 
-  function eligibleIndexes(text) {
-    return words(text)
-      .map((word, i) => ({ word, i }))
-      .filter((x) => x.word.length >= 2 && !PARTICLES.has(x.word))
-      .map((x) => x.i);
+  const byLength = (list) => list.slice().sort((a, b) => b.length - a.length);
+  const CASE_SUFFIX = byLength([
+    "에게서", "으로부터", "로부터", "께서는", "께서도", "께서", "에게는", "에게도", "에게", "에서는", "에서도", "에서",
+    "으로는", "으로도", "으로", "부터", "까지", "보다", "처럼", "마다", "이나",
+    "을", "를", "의", "와", "과", "께", "은", "는", "이", "가", "에", "도", "로", "만"
+  ]);
+  const SAFE_CASE = new Set([
+    "에게서", "으로부터", "로부터", "께서는", "께서도", "께서", "에게는", "에게도", "에게", "에서는", "에서도", "에서",
+    "으로는", "으로도", "으로", "부터", "까지", "을", "를", "의", "와", "과"
+  ]);
+  const COPULA_SUFFIX = byLength([
+    "이시니라", "이시라", "이시니", "이시요", "이시며", "이니라", "이로다", "이라", "이요", "이니", "이며", "이여",
+    "니라", "로다", "라", "요", "니", "며", "여", "아", "야"
+  ]);
+  const LEX_SUFFIX = byLength(["에게서", "으로부터", "께서", "에게", "에서", "으로", "을", "를", "의"]);
+  const VERB_TAIL = /(?:하|시|되|있|없|으|리|더|겠|았|었|였|하여|위하|인하|향하|대하)$/;
+  const KEY_TERMS = new Set([
+    "계시", "말씀", "증거", "보좌", "어린 양", "인", "나팔", "대접", "교회", "촛대", "별", "영", "피", "생명", "은혜",
+    "평강", "회개", "영광", "권세", "능력", "심판", "구원", "진노", "사랑", "믿음", "인내", "환난", "나라", "제사장",
+    "증인", "천사", "예언", "성도", "장로", "생물", "면류관", "책", "성", "하늘", "땅", "바다", "이름", "음성",
+    "우레", "번개", "지진", "재앙", "표", "짐승", "용", "음녀", "신부", "혼인", "생명수", "강", "나무", "빛", "보혈",
+    "어린양", "새 예루살렘", "새 하늘", "새 땅", "새 노래", "흰 옷", "생명책", "생명나무", "복", "찬송", "경배"
+  ]);
+  const PERSON_NAMES = new Set([
+    "예수", "그리스도", "예수 그리스도", "하나님", "주", "주 하나님", "요한", "다윗", "모세", "미가엘", "사단", "마귀",
+    "발람", "발락", "이세벨", "안디바", "유다", "레위", "이스라엘", "인자", "알파", "오메가", "니골라당", "아시아", "성령"
+  ]);
+  const PAIR_HEAD = new Map([
+    ["예수", ["그리스도"]],
+    ["주", ["하나님", "예수"]],
+    ["어린", ["양"]],
+    ["새", ["예루살렘", "하늘", "땅", "노래", "이름"]],
+    ["흰", ["옷", "말", "보좌", "구름", "돌", "세마포"]],
+    ["큰", ["성", "음녀", "용", "음성", "환난", "지진", "바벨론", "성 바벨론"]],
+    ["붉은", ["용", "말"]],
+    ["거룩한", ["성", "성도"]],
+    ["금", ["촛대", "대접", "향로", "면류관", "단", "띠", "잔", "갈대"]]
+  ]);
+  const NUM_RE = /^(?:첫|둘|셋|넷|두|세|네|한|다섯|여섯|일곱|여덟|아홉|열|스물|하나|이|삼|사|오|육|륙|칠|팔|구|십|백|천|만|일)+째?$/;
+  const NUM_LONE = /^(?:이|사|오|구|일|네|두|세|한|만|천|백|팔)$/;
+
+  function numberStem(stem) {
+    if (!NUM_RE.test(stem) || KEY_TERMS.has(stem) || PERSON_NAMES.has(stem)) return false;
+    return !lexicon.has(stem) || /^(?:첫|둘|셋|넷|다섯|여섯|일곱|여덟|아홉|열|스물|하나)/.test(stem) || /(?:십|백|천|만|째)$/.test(stem);
+  }
+  const PRONOUN_CASE = /^(?:나|너|저|그|우리|너희|저희|그들|자기)(?:더러|에게로|에게|께|를|을|의|와|과|로|도)$/;
+  const lexicon = new Set();
+
+  function learnNouns(texts) {
+    texts.forEach((text) => {
+      words(text).forEach((word) => {
+        const core = splitWord(word).core;
+        const suffix = LEX_SUFFIX.find((suf) => core.length > suf.length && core.endsWith(suf));
+        if (!suffix) return;
+        const stem = core.slice(0, -suffix.length);
+        if (syllableCount(stem) < 2 && !KEY_SHORT.has(stem)) return;
+        if (VERB_TAIL.test(stem) || PLAIN_STEMS.has(stem) || FUNCTION_WORDS.has(stem)) return;
+        lexicon.add(stem);
+      });
+    });
   }
 
-  function pickBlanks(text, n, seed) {
-    const w = words(text);
-    const primary = [];
-    const rest = [];
-    chunkRanges(text).forEach((range) => {
-      const ranked = [];
-      for (let i = range.start; i < range.end; i++) {
-        const score = contentScore(w[i]);
-        if (score >= 3) ranked.push({ i, score });
+  function splitWord(raw) {
+    const m = String(raw || "").match(/^([“"'(\[]*)(.*?)([”"'.,!?…·:;)\]]*)$/);
+    return m ? { lead: m[1], core: m[2], trail: m[3] } : { lead: "", core: String(raw || ""), trail: "" };
+  }
+
+  function knownNoun(stem) {
+    return lexicon.has(stem) || KEY_TERMS.has(stem) || PERSON_NAMES.has(stem) || NAME_HOLD.has(stem);
+  }
+
+  function nounish(stem, safe) {
+    if (!stem || PLAIN_STEMS.has(stem) || FUNCTION_WORDS.has(stem) || PARTICLES.has(stem)) return false;
+    if (knownNoun(stem) || stem === "일" || numberStem(stem) && !NUM_LONE.test(stem)) return true;
+    if (!safe) return false;
+    if (syllableCount(stem) < 2 && !KEY_SHORT.has(stem)) return false;
+    return !VERB_TAIL.test(stem);
+  }
+
+  function nounSplit(core) {
+    for (const suffix of CASE_SUFFIX) {
+      if (core.length > suffix.length && core.endsWith(suffix)) {
+        const stem = core.slice(0, -suffix.length);
+        if (nounish(stem, SAFE_CASE.has(suffix))) return { stem, suffix };
       }
-      if (!ranked.length) return;
-      ranked.sort((a, b) => b.score - a.score || b.i - a.i);
-      primary.push(ranked[0]);
-      ranked.slice(1).forEach((item) => rest.push(item));
+    }
+    for (const suffix of COPULA_SUFFIX) {
+      if (core.length > suffix.length && core.endsWith(suffix)) {
+        const stem = core.slice(0, -suffix.length);
+        if (!PLAIN_STEMS.has(stem) && (knownNoun(stem) || numberStem(stem) && !NUM_LONE.test(stem))) return { stem, suffix };
+      }
+    }
+    return null;
+  }
+
+  function clozeUnits(text) {
+    let prevNumber = false;
+    const toks = words(text).map((raw, i) => {
+      const part = splitWord(raw);
+      const split = part.core ? nounSplit(part.core) : null;
+      const stem = split ? split.stem : part.core;
+      const number = numberStem(stem) && (!NUM_LONE.test(stem) || prevNumber);
+      prevNumber = number && !split;
+      const minor = !split && (PRONOUN_CASE.test(part.core) || CASE_SUFFIX.some((suf) => {
+        if (part.core.length <= suf.length || !part.core.endsWith(suf)) return false;
+        const rest = part.core.slice(0, -suf.length);
+        return syllableCount(rest) === 1 && !KEY_SHORT.has(rest) || PLAIN_STEMS.has(rest) || FUNCTION_WORDS.has(rest);
+      }));
+      return {
+        i, raw, lead: part.lead, trail: part.trail, core: part.core, stem,
+        suffix: split ? split.suffix : "",
+        noun: !!split || knownNoun(part.core),
+        number, minor
+      };
     });
+    const units = [];
+    for (let i = 0; i < toks.length; i++) {
+      let j = i + 1;
+      while (j < toks.length && j - i < 3) {
+        const prev = toks[j - 1];
+        const next = toks[j];
+        if (prev.suffix || prev.trail || next.lead) break;
+        const heads = PAIR_HEAD.get(prev.core);
+        const pair = heads && heads.includes(next.stem);
+        const counted = prev.number && (next.noun || next.number);
+        if (!pair && !counted) break;
+        j++;
+      }
+      const span = toks.slice(i, j);
+      const last = span[span.length - 1];
+      const answer = span.slice(0, -1).map((t) => t.core).concat(last.stem).join(" ");
+      let kind = "verb";
+      let score;
+      if (span[0].number) {
+        kind = "number";
+        score = 6;
+      } else if (PERSON_NAMES.has(answer) || PERSON_NAMES.has(span[0].stem) || NAME_HOLD.has(last.stem)) {
+        kind = "name";
+        score = 5.5 + (span.length > 1 ? 0.5 : 0);
+      } else if (last.noun) {
+        kind = "noun";
+        const size = syllableCount(last.stem);
+        score = PLAIN_STEMS.has(last.stem) || FUNCTION_WORDS.has(last.stem) ? 0 : size >= 2 || KEY_SHORT.has(last.stem) ? 5 : 2;
+        if (score && (KEY_TERMS.has(answer) || KEY_TERMS.has(last.stem))) score += 1.5;
+        if (span.length > 1) score += 0.5;
+      } else {
+        score = last.minor ? 1 : contentScore(last.raw);
+      }
+      if (LIGHT_WORDS.test(answer) || LIGHT_WORDS.test(last.core)) score = Math.min(score, 1);
+      units.push({ i, j, answer, before: span[0].lead, after: last.suffix + last.trail, kind, score });
+      i = j - 1;
+    }
+    return units;
+  }
+
+  const CLOZE_RATIO = [0.5, 0.6, 0.7];
+  const VERB_WEIGHT = [0.55, 0.8, 1];
+
+  function pickCloze(text, level, seed) {
+    const lv = Math.max(0, Math.min(2, level | 0));
+    const cands = clozeUnits(text).filter((u) => u.score >= 3 && u.answer);
+    if (!cands.length) return [];
+    const weight = (u) => (u.kind === "verb" ? u.score * VERB_WEIGHT[lv] : u.score);
+    const target = Math.min(cands.length, Math.max(2, Math.round(cands.length * CLOZE_RATIO[lv])));
+    const next = rng(seed);
+    const rank = new Map(cands.map((u) => [u, weight(u) + next() * 0.9]));
+    const byRank = (a, b) => rank.get(b) - rank.get(a);
     const chosen = [];
-    const used = new Set();
-    function take(item) {
-      if (!item || used.has(item.i) || chosen.length >= n) return;
-      if ([...used].some((index) => Math.abs(index - item.i) === 1 || normalize(w[index]) === normalize(w[item.i]))) return;
-      used.add(item.i);
-      chosen.push(item.i);
-    }
-    const ordered = primary.slice().sort((a, b) => a.i - b.i);
-    if (ordered.length <= n) ordered.forEach(take);
-    else {
-      const stride = ordered.length / n;
-      const shift = ((seed >>> 0) % 997) / 997 * stride;
-      for (let k = 0; k < n; k++) take(ordered[Math.min(ordered.length - 1, Math.floor(k * stride + shift))]);
-      ordered.slice().sort((a, b) => b.score - a.score).forEach(take);
-    }
-    rest.sort((a, b) => b.score - a.score).forEach(take);
-    if (chosen.length < n) seededShuffle(eligibleIndexes(text), seed + 2).forEach((i) => take({ i }));
-    return chosen.sort((a, b) => a - b).slice(0, n);
+    const clash = (u) => chosen.some((c) =>
+      normalize(c.answer) === normalize(u.answer) ||
+      lv < 2 && (c.j === u.i && !c.after || u.j === c.i && !u.after));
+    const take = (u) => {
+      if (u && chosen.length < target && !chosen.includes(u) && !clash(u)) chosen.push(u);
+    };
+    const anchors = [];
+    chunkRanges(text).forEach((range) => {
+      const best = cands.filter((u) => u.i >= range.start && u.i < range.end && weight(u) >= 4).sort(byRank)[0];
+      if (best) anchors.push(best);
+    });
+    anchors.sort(byRank).forEach(take);
+    cands.slice().sort(byRank).forEach(take);
+    return chosen
+      .sort((a, b) => a.i - b.i)
+      .map((u) => ({ i: u.i, j: u.j, answer: u.answer, before: u.before, after: u.after, kind: u.kind }));
+  }
+
+  function clozeMatch(given, unit, spoken) {
+    const said = String(given || "").trim();
+    if (!said) return false;
+    const whole = unit.answer + bareWord(unit.after || "");
+    if (spoken) return spokenSimilarity(said, unit.answer) >= 0.9 || spokenSimilarity(said, whole) >= 0.9;
+    return normalize(said) === normalize(unit.answer) || normalize(said) === normalize(whole);
+  }
+
+  function chosung(text) {
+    return String(text || "").replace(/[가-힣]/g, (ch) => CHO.charAt(Math.floor((ch.charCodeAt(0) - 0xac00) / 588)));
+  }
+
+  function heardFit(said, target) {
+    const got = words(said);
+    const want = words(target);
+    if (!got.length || !want.length) return 0;
+    let sum = 0;
+    got.forEach((word) => {
+      let best = 0;
+      for (const goal of want) {
+        best = Math.max(best, soundSimilarity(word, goal));
+        if (best === 1) break;
+      }
+      sum += best;
+    });
+    return sum / got.length;
   }
 
   function skeleton(text) {
@@ -752,15 +960,11 @@
     return phrase;
   }
 
-  function productionQuestion(verse, seed) {
+  function productionQuestion(verse, seed, level) {
     const w = words(verse.text);
-    if (w.length <= 18) return { kind: "full", id: verse.id, qid: "f" + verse.id };
-    return {
-      kind: "blanks",
-      id: verse.id,
-      blanks: pickBlanks(verse.text, 3, seed),
-      qid: "b" + verse.id + ":" + seed
-    };
+    const units = w.length <= 18 ? [] : pickCloze(verse.text, level == null ? 1 : level, seed);
+    if (!units.length) return { kind: "full", id: verse.id, qid: "f" + verse.id };
+    return { kind: "blanks", id: verse.id, units, qid: "b" + verse.id + ":" + seed };
   }
 
   function distractorChoices(list, id, k, seed) {
@@ -775,13 +979,10 @@
     return seededShuffle(ids, seed + 3);
   }
 
-  function orderQuestion(verses, qid) {
+  function orderQuestion(verses, qid, seed) {
     const used = new Set();
-    return {
-      kind: "order",
-      qid,
-      items: verses.map((v) => ({ id: v.id, phrase: opener(v.text, 5, used) }))
-    };
+    const items = verses.map((v) => ({ id: v.id, phrase: opener(v.text, 5, used) }));
+    return { kind: "order", qid, items, bank: scramble(items.map((item) => item.id), hash(qid + ":" + (seed || 0))) };
   }
 
   function buildDailyQuestions(list, ids, seed) {
@@ -791,7 +992,7 @@
       qs.push(productionQuestion(map.get(id), seed + n * 17));
     });
     if (ids.length >= 3) {
-      qs.push(orderQuestion(ids.slice(0, Math.min(4, ids.length)).map((id) => map.get(id)), "ord-" + ids[0]));
+      qs.push(orderQuestion(ids.slice(0, Math.min(4, ids.length)).map((id) => map.get(id)), "ord-" + ids[0], seed));
     }
     if (ids.length) {
       const target = ids[ids.length - 1];
@@ -820,7 +1021,7 @@
     const size = verses.length > 18 ? 8 : verses.length > 10 ? 6 : Math.max(2, verses.length);
     for (let i = 0; i < verses.length; i += size) {
       const band = verses.slice(i, i + size);
-      if (band.length >= 2) qs.push(orderQuestion(band, "ord-" + chapter + "-" + i));
+      if (band.length >= 2) qs.push(orderQuestion(band, "ord-" + chapter + "-" + i, seed));
     }
     const recalls = Math.min(depth || 4, verses.length);
     const shift = Math.abs(seed) % verses.length;
@@ -843,7 +1044,7 @@
       if (i > verses.length + 2) break;
     }
     picked.slice(0, recalls).forEach((v, n) => {
-      qs.push(productionQuestion(v, seed + 30 + n * 13));
+      qs.push(productionQuestion(v, seed + 30 + n * 13, 2));
     });
     let openings = 0;
     for (let i = 1; i < verses.length && openings < 2; i += Math.max(1, Math.floor(verses.length / 3))) {
@@ -871,7 +1072,7 @@
       pool.splice(index, 1);
     }
     const map = new Map(list.map((v) => [v.id, v]));
-    return chosen.map((id, n) => productionQuestion(map.get(id), seed + n * 19));
+    return chosen.map((id, n) => productionQuestion(map.get(id), seed + n * 19, 2));
   }
 
   function grade(question, payload, list) {
@@ -889,17 +1090,16 @@
       return { ...question, score, pass: score >= 0.9, target };
     }
     if (question.kind === "blanks") {
-      const verseWords = words(map.get(question.id).text);
+      const units = question.units || [];
       let hit = 0;
       const wrong = [];
-      question.blanks.forEach((index) => {
-        const given = payload.blanks ? payload.blanks[index] : "";
-        const match = payload.spoken ? spokenSimilarity(given, verseWords[index]) >= 0.9 : normalize(given) === normalize(verseWords[index]);
-        if (match) hit += 1;
-        else wrong.push(index);
+      units.forEach((unit, n) => {
+        if (clozeMatch(payload.blanks ? payload.blanks[n] : "", unit, payload.spoken)) hit += 1;
+        else wrong.push(n);
       });
-      const score = hit / question.blanks.length;
-      return { ...question, score, pass: score === 1, wrong };
+      const pass = units.length > 0 && hit === units.length;
+      const score = units.length ? (hit / units.length) * (payload.hinted ? 0.85 : 1) : 0;
+      return { ...question, score, pass, wrong, hinted: !!payload.hinted };
     }
     if (question.kind === "locate") {
       const pass = payload.choice === question.id;
@@ -930,15 +1130,22 @@
     return list.filter((v) => v.text.includes(q) || v.id === q).slice(0, 40);
   }
 
-  function makeClozeBank(text, blanks, pool, seed) {
-    const verseWords = words(text);
-    const tokens = blanks.map((index, n) => ({ uid: "c" + n, word: verseWords[index] }));
-    const ban = new Set(tokens.map((token) => token.word));
-    const extras = seededShuffle(unique(pool.filter((word) => {
-      if (ban.has(word) || word.length < 2 || PARTICLES.has(word)) return false;
-      return ![...ban].some((answer) => normalize(answer) === normalize(word));
-    })), seed).slice(0, tokens.length + 2).map((word, n) => ({ uid: "d" + n, word }));
-    return seededShuffle(tokens.concat(extras), seed + 1);
+  function makeClozeBank(units, pool, seed) {
+    const tokens = units.map((unit, n) => ({ uid: "c" + n, word: unit.answer }));
+    const taken = new Set(tokens.map((token) => normalize(token.word)));
+    const next = rng(seed);
+    const extras = [];
+    units.forEach((unit) => {
+      const size = syllableCount(unit.answer);
+      const lures = pool
+        .filter((p) => p.kind === unit.kind && !taken.has(normalize(p.answer)))
+        .map((p) => ({ word: p.answer, cost: Math.abs(syllableCount(p.answer) - size) + next() * 1.5 }))
+        .sort((a, b) => a.cost - b.cost);
+      if (!lures.length) return;
+      taken.add(normalize(lures[0].word));
+      extras.push(lures[0].word);
+    });
+    return scramble(tokens.concat(extras.map((word, n) => ({ uid: "d" + n, word }))), seed + 1);
   }
 
   root.LampEngine = {
@@ -955,9 +1162,13 @@
     alignHeard,
     hash,
     seededShuffle,
+    scramble,
     flatten,
     chunksOf,
-    pickBlanks,
+    clozeUnits,
+    pickCloze,
+    chosung,
+    heardFit,
     skeleton,
     wordDiff,
     qualityFromScore,
