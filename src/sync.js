@@ -277,10 +277,22 @@
     view.recovery = false;
   }
 
-  async function signOut() {
+  async function signOut(force) {
     if (!client) return;
     if (user && !conflict && dirtyNow()) await push();
-    await client.auth.signOut();
+    if (!force && user && (conflict || dirtyNow())) {
+      const err = new Error("unsaved");
+      err.unsaved = true;
+      throw err;
+    }
+    const res = await client.auth.signOut({ scope: "local" });
+    if (res && res.error) throw res.error;
+    clearTimeout(timer);
+    timer = 0;
+    conflict = null;
+    lastJson = null;
+    meta = { uid: "", rev: 0, dirty: false };
+    saveMeta();
   }
 
   function status() {
