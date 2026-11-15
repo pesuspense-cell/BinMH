@@ -2024,7 +2024,9 @@
     const known = knownCount();
     const info = E.levelInfo(state.xp);
     const letters = known ? list.filter((verse) => (state.cards[verse.id]?.stage || 0) >= 3).reduce((sum, verse) => sum + verse.text.replace(/\s/g, "").length, 0) : 0;
-    return '<p class="clock" id="clock"></p><h1>' + esc(greeting()) + "</h1>" +
+    const hello = greeting();
+    const cut = hello.lastIndexOf(", ");
+    return '<p class="clock" id="clock"></p><h1>' + esc(hello.slice(0, cut + 1)) + "<br>" + esc(hello.slice(cut + 2)) + "</h1>" +
       '<label class="search"><span aria-hidden="true">⌕</span><input id="q" placeholder="성경 전서에서 찾기: 낱말, 요 3:16, 시 23, 계 21:4" value="' + esc(ui.query) + '" autocomplete="off"></label>' +
       '<div id="search-results">' + searchHtml(ui.query) + "</div>" +
       '<section class="hero"><div><p class="eyebrow">오늘 암송</p><h2>' + esc(heroTitle) + "</h2><p class=\"muted\">" + esc(plan) + (due ? " · 먼저 복습 " + due + "절" : "") + '</p></div><button class="btn gold" type="button" data-act="start-daily">' + (ui.session && ui.session.phase !== "done" ? "이어하기" : goal === 0 ? "복습하러 가기" : "암송 시작") + "</button></section>" +
