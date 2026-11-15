@@ -5,7 +5,8 @@ const INSTRUCTIONS = [
   "한국어 개역한글 성경을 소리 내어 낭독합니다.",
   "기계처럼 또박또박 끊지 말고, 말씀을 마음에 새기며 읽는 사람처럼 차분하고 따뜻하며 경건하게 읽으세요.",
   "뜻이 이어지는 구절은 한 호흡으로 묶고, 쉼표와 '~하고', '~하니', '~하매' 같은 연결 어미 뒤에서 살짝 쉬세요.",
-  "옛 표기는 적힌 그대로 자연스럽게 발음하고, 속도는 보통보다 조금 느리게 합니다."
+  "옛 표기는 적힌 그대로 자연스럽게 발음하고, 속도는 보통보다 조금 느리게 합니다.",
+  "마지막 낱말까지 하나도 빠뜨리지 말고 끝까지 또렷하게 읽은 뒤 마치세요."
 ].join(" ");
 
 const verses = new Map();
@@ -36,7 +37,7 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model: process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts",
         voice,
-        input: text,
+        input: /[.!?]$/.test(text) ? text : text + ".",
         instructions: INSTRUCTIONS,
         response_format: "mp3"
       })

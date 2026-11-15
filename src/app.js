@@ -329,7 +329,7 @@
     ["onyx", "AI 남성 · 낮고 묵직한"],
     ["coral", "AI 여성 · 부드러운"]
   ];
-  const SPEAK_VERSION = 1;
+  const SPEAK_VERSION = 2;
   let player = null;
 
   function aiVoice() {

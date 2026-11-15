@@ -26,7 +26,8 @@ module.exports = async (req, res) => {
     if (audio.length < 1000) return send(res, 400, { error: "short" });
     if (audio.length > MAX_AUDIO_BYTES) return send(res, 413, { error: "long" });
     const form = new FormData();
-    form.append("file", new Blob([audio], { type: "audio/wav" }), "speech.wav");
+    const mp3 = body.format === "mp3";
+    form.append("file", new Blob([audio], { type: mp3 ? "audio/mpeg" : "audio/wav" }), mp3 ? "speech.mp3" : "speech.wav");
     form.append("model", process.env.OPENAI_STT_MODEL || "gpt-4o-transcribe");
     form.append("language", "ko");
     form.append("response_format", "json");
