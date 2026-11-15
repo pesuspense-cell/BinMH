@@ -6,6 +6,7 @@
 
   const E = window.LampEngine;
   const B = window.LampBible;
+  const S = window.LampSync;
   const list = E.flatten(window.REVELATION);
   const map = new Map(list.map((verse) => [verse.id, verse]));
   const STORAGE = "seven-lamps-revelation-v1";
@@ -42,7 +43,11 @@
     editing: "",
     editDraft: null,
     editError: "",
-    bibleError: false
+    bibleError: false,
+    syncError: "",
+    syncBusy: false,
+    syncEmail: "",
+    syncKey: ""
   };
 
   let state = load();
@@ -89,6 +94,7 @@
 
   function persist() {
     localStorage.setItem(STORAGE, JSON.stringify(state));
+    if (S) S.touched();
     if (ui.session && ui.session.phase !== "done") sessionStorage.setItem(STORAGE + ":s", JSON.stringify(ui.session));
     else sessionStorage.removeItem(STORAGE + ":s");
   }
@@ -1533,6 +1539,151 @@
     render();
   }
 
+  function syncOn() {
+    return !!(S && S.status().configured);
+  }
+
+  function syncLine(info) {
+    if (info.phase === "saving") return "저장하는 중…";
+    if (info.phase === "saved") return "서버에 저장됨 · " + info.at;
+    if (info.phase === "offline") return "오프라인입니다. 연결되면 바로 올립니다.";
+    if (info.phase === "error") return "동기화 문제: " + info.error;
+    if (info.phase === "conflict") return "어느 기록을 쓸지 골라 주세요.";
+    if (info.phase === "signed-out") return "로그인하지 않았습니다.";
+    return "서버 기록을 확인하는 중…";
+  }
+
+  function syncFormHtml(info) {
+    const error = ui.syncError ? '<p class="error">' + esc(ui.syncError) + "</p>" : "";
+    const busy = ui.syncBusy ? " disabled" : "";
+    if (info.sent) {
+      return '<p class="muted">' + esc(info.pendingEmail) + " 으로 메일을 보냈습니다. 메일의 숫자 코드를 적거나, 메일의 링크를 지금 이 브라우저에서 여세요.</p>" +
+        '<form data-act="sync-code" class="row"><input class="textin" id="sync-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="메일의 숫자 코드"><button class="btn gold" type="submit"' + busy + '>로그인</button><button class="btn ghost" type="button" data-act="sync-restart">다른 이메일</button></form>' + error;
+    }
+    return '<form data-act="sync-email" class="row"><input class="textin" id="sync-email" name="email" type="email" autocomplete="email" placeholder="이메일 주소" value="' + esc(ui.syncEmail || info.pendingEmail || "") + '"><button class="btn gold" type="submit"' + busy + ">" + (ui.syncBusy ? "보내는 중…" : "코드 받기") + "</button></form>" + error;
+  }
+
+  function syncCardHtml() {
+    if (!syncOn()) return "";
+    const info = S.status();
+    let body;
+    if (info.signedIn) {
+      body = '<p class="muted">' + esc(info.email) + ' 계정으로 기록을 서버에 보관합니다. 휴대폰과 PC에서 같은 이메일로 로그인하면 같은 기록을 이어 씁니다.</p>' +
+        '<p class="sync-line ' + esc(info.phase) + '" id="sync-status">' + esc(syncLine(info)) + "</p>" +
+        '<div class="row"><button class="btn" type="button" data-act="sync-now">지금 맞추기</button><button class="btn ghost" type="button" data-act="sync-out">로그아웃</button></div>';
+    } else if (info.phase === "loading") {
+      body = '<p class="faint" id="sync-status">동기화를 준비하는 중…</p>';
+    } else {
+      body = '<p class="faint">이메일로 로그인하면 기록이 서버에 보관되어, 기기를 바꾸거나 브라우저 기록을 지워도 남습니다.</p>' +
+        (info.phase === "error" ? '<p class="error">' + esc(info.error) + "</p>" : "") + syncFormHtml(info);
+    }
+    return '<article class="card" style="margin-bottom:16px"><h3>기기 사이 동기화</h3>' + body + "</article>";
+  }
+
+  function welcomeSyncHtml() {
+    if (!syncOn()) return "";
+    const info = S.status();
+    if (info.signedIn) return '<article class="card welcome-sync"><p class="muted">' + esc(info.email) + ' 로 로그인했습니다. 서버에 기록이 없으면 여기서 새로 시작합니다.</p><p class="faint" id="sync-status">' + esc(syncLine(info)) + "</p></article>";
+    if (info.phase === "loading") return "";
+    return '<article class="card welcome-sync"><h3>다른 기기에서 쓰던 기록이 있나요?</h3><p class="faint">그때 쓴 이메일로 로그인하면 기록을 불러옵니다.</p>' + syncFormHtml(info) + "</article>";
+  }
+
+  function recordSummary(data) {
+    const cards = data.cards || {};
+    const known = Object.keys(cards).filter((id) => (cards[id].stage || 0) >= 3).length;
+    const days = Object.keys(data.days || {}).sort();
+    const last = days.length ? days[days.length - 1] : "";
+    return (data.name ? esc(data.name) + " · " : "") + "외운 절 " + known + " · 일기 " + (data.journal || []).length + " · " + (data.xp || 0) + " XP" + (last ? " · 마지막 " + last : "");
+  }
+
+  function conflictHtml() {
+    const info = syncOn() ? S.status() : null;
+    if (!info || !info.conflict) return "";
+    return '<div class="modal-back"><div class="modal"><p>이 기기의 기록과 서버의 기록이 서로 다릅니다. 어느 쪽을 쓸까요?</p><div class="stack">' +
+      '<button class="btn gold choice" type="button" data-act="sync-pick" data-side="remote">서버 기록 쓰기<br><small>' + recordSummary(info.conflict.remote.state || {}) + "</small></button>" +
+      '<button class="btn choice" type="button" data-act="sync-pick" data-side="local">이 기기 기록 쓰기<br><small>' + recordSummary(info.conflict.local) + "</small></button>" +
+      '</div><p class="faint">고르지 않은 쪽은 이 기기에 백업으로 한 번 남겨 둡니다.</p></div></div>';
+  }
+
+  function syncKey(info) {
+    return [info.signedIn, info.phase === "loading", info.phase === "signed-out", !!info.conflict, info.sent].join("|");
+  }
+
+  function onSyncStatus() {
+    const info = S.status();
+    const key = syncKey(info);
+    if (key !== ui.syncKey) {
+      ui.syncKey = key;
+      const typing = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.id !== "sync-code";
+      if (!typing || info.conflict) { render(); return; }
+    }
+    const line = document.getElementById("sync-status");
+    if (line && info.signedIn) {
+      line.textContent = syncLine(info);
+      line.className = (ui.page === "stats" ? "sync-line " : "faint ") + info.phase;
+    }
+  }
+
+  function startSync() {
+    if (!S) return;
+    S.init({
+      key: STORAGE,
+      read: () => state,
+      meaningful: (data) => !!(data && ((data.xp || 0) > 0 || (data.journal || []).length || Object.keys(data.cards || {}).length)),
+      apply: (data) => {
+        state = Object.assign(fresh(), data);
+        if (state.name && ui.page === "welcome") ui.page = "home";
+        render();
+      },
+      status: onSyncStatus
+    });
+    if (syncOn()) ui.syncKey = syncKey(S.status());
+  }
+
+  function syncEmail(form) {
+    const email = String(form.elements.email.value || "").trim();
+    ui.syncEmail = email;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      ui.syncError = "이메일 주소를 확인해 주세요.";
+      render();
+      return;
+    }
+    ui.syncError = "";
+    ui.syncBusy = true;
+    render();
+    S.sendCode(email).then(() => {
+      ui.syncBusy = false;
+      ui.syncKey = syncKey(S.status());
+      render();
+      const field = document.getElementById("sync-code");
+      if (field) field.focus();
+    }, (err) => {
+      ui.syncBusy = false;
+      ui.syncError = err.message;
+      render();
+    });
+  }
+
+  function syncCode(form) {
+    const code = String(form.elements.code.value || "").replace(/\D/g, "");
+    if (code.length < 6) {
+      ui.syncError = "메일에 있는 숫자 코드를 모두 적어 주세요.";
+      render();
+      return;
+    }
+    ui.syncError = "";
+    ui.syncBusy = true;
+    render();
+    S.verify(code).then(() => {
+      ui.syncBusy = false;
+      render();
+    }, (err) => {
+      ui.syncBusy = false;
+      ui.syncError = err.message;
+      render();
+    });
+  }
+
   function resetAll() {
     state = fresh();
     ui.session = null;
@@ -1644,7 +1795,7 @@
   function welcomeHtml() {
     return '<div class="welcome"><form class="card" data-act="welcome"><p class="eyebrow">개역한글 · 요한계시록</p><h1>하루에 다섯 절, 등잔을 켜 갑니다</h1><p class="lede">읽고, 나누고, 빈칸을 메우고, 힌트 없이 적습니다. 잊기 직전에 다시 꺼내고, 한 장을 다 외우면 전체로 확인합니다.</p><label class="stack">뭐라고 부를까요<input class="textin" id="name" name="name" maxlength="16" placeholder="이름" autocomplete="name"></label>' +
       (ui.nameError ? '<p class="error">' + esc(ui.nameError) + "</p>" : "") +
-      '<p><button class="btn gold" type="submit">암송을 시작할게요</button></p></form></div>';
+      '<p><button class="btn gold" type="submit">암송을 시작할게요</button></p></form>' + welcomeSyncHtml() + "</div>";
   }
 
   function homeHtml() {
@@ -1874,7 +2025,8 @@
       '<article class="card" style="margin-bottom:16px"><h3>읽는 목소리</h3><p class="faint" id="voice-note">' + esc(voiceNote()) + '</p><div class="row"><select class="voice" data-act="voice">' + voiceOptionsHtml() + '</select><button class="btn" type="button" data-act="voice-sample">들어 보기</button></div></article>' +
       '<article class="card" style="margin-bottom:16px"><h3>말로 입력 정확도</h3><p class="faint">Chrome·Edge에서는 브라우저의 음성인식을 먼저 씁니다. 그것을 쓸 수 없을 때 이 기기 안의 음성 모델이 받아 적습니다.</p><div class="row">' +
       [["base", "빠르게 · 기본", "처음 한 번 약 73MB"], ["small", "정확도 우선", "처음 한 번 약 238MB · 받아 적기 2~3배 느림"]].map(([key, name, info]) => '<button class="btn ' + ((state.earModel || "base") === key ? "gold" : "ghost") + '" type="button" data-act="ear-model" data-model="' + key + '" aria-pressed="' + ((state.earModel || "base") === key) + '">' + name + '<br><small class="faint">' + info + "</small></button>").join("") + "</div></article>" +
-      '<article class="card" style="margin-bottom:16px"><h3>기록 옮기기</h3><p class="faint">기록은 이 브라우저에만 저장됩니다. 다른 주소나 기기로 옮길 때 파일로 내보낸 뒤 그곳에서 가져오세요.</p><div class="row"><button class="btn" type="button" data-act="export">기록 내보내기</button><label class="btn ghost">기록 가져오기<input type="file" accept="application/json,.json" data-act="import" hidden></label></div></article>' +
+      syncCardHtml() +
+      '<article class="card" style="margin-bottom:16px"><h3>기록 파일</h3><p class="faint">' + (syncOn() && S.status().signedIn ? "서버와 별도로, 지금 기록을 파일로 보관하거나 파일에서 되살릴 수 있습니다." : "로그인하지 않으면 기록은 이 브라우저에만 저장됩니다. 파일로 내보내 보관하거나 다른 곳에서 가져올 수 있습니다.") + '</p><div class="row"><button class="btn" type="button" data-act="export">기록 내보내기</button><label class="btn ghost">기록 가져오기<input type="file" accept="application/json,.json" data-act="import" hidden></label></div></article>' +
       '<article class="card"><h3>이름</h3><form data-act="rename" class="row"><input class="textin" name="name" value="' + esc(state.name) + '" maxlength="16"><button class="btn" type="submit">바꾸기</button></form>' +
       '<form data-act="reset" style="margin-top:18px"><p class="faint">기록을 모두 지우려면 초기화라고 적고 버튼을 누르세요.</p><div class="row"><input class="textin" name="word" placeholder="초기화"><button class="btn" type="submit">기록 지우기</button></div></form></article>';
   }
@@ -2131,7 +2283,7 @@
     else if (ui.page === "journal") body = journalHtml();
     else if (ui.page === "stats") body = statsHtml();
     else body = homeHtml();
-    root.innerHTML = (state.name ? navHtml() : "") + "<main>" + body + "</main>" + modalHtml();
+    root.innerHTML = (state.name ? navHtml() : "") + "<main>" + body + "</main>" + (conflictHtml() || modalHtml());
     document.title = "일곱등잔 · 계시록 암송";
     persist();
     const clock = document.getElementById("clock");
@@ -2185,6 +2337,13 @@
     }
     if (act === "speak") return speak(map.get(ui.session.step.id).text);
     if (act === "export") return exportState();
+    if (act === "sync-pick") { S.resolve(el.dataset.side === "local" ? "local" : "remote"); render(); return; }
+    if (act === "sync-now") { S.pull(); return; }
+    if (act === "sync-restart") { S.restart(); ui.syncError = ""; ui.syncKey = syncKey(S.status()); render(); return; }
+    if (act === "sync-out") {
+      S.signOut().catch(() => {}).then(() => { ui.syncError = ""; render(); });
+      return;
+    }
     if (act === "ear-model") {
       state.earModel = el.dataset.model === "small" ? "small" : "base";
       render();
@@ -2299,13 +2458,15 @@
     }
     if (act === "order") return acceptAnswer({ order: ui.session.orderPicked.slice() });
     if (act === "journal") return submitJournal(form);
+    if (act === "sync-email") return syncEmail(form);
+    if (act === "sync-code") return syncCode(form);
     if (act === "reset") {
       if (String(form.elements.word.value || "").trim() !== "초기화") {
         ui.confirm = { message: "기록을 지우려면 입력칸에 초기화라고 정확히 적어 주세요.", act: "noop" };
         render();
         return;
       }
-      ui.confirm = { message: "암송 기록, 기도, 일기가 이 브라우저에서 지워집니다.", act: "reset-go" };
+      ui.confirm = { message: syncOn() && S.status().signedIn ? "암송 기록, 기도, 일기가 이 브라우저와 서버에서 모두 지워집니다." : "암송 기록, 기도, 일기가 이 브라우저에서 지워집니다.", act: "reset-go" };
       render();
     }
   }
@@ -2358,6 +2519,7 @@
   if (ui.session && ui.session.phase === "cloze" && ui.session.step && ui.session.step.done) beginRecall();
   if (ui.session) ui.page = "session";
   stamp = today();
+  startSync();
   render();
 
   setInterval(() => {

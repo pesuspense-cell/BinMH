@@ -326,6 +326,14 @@ textarea, .textin {
 .modal { width: min(420px, 100%); background: #fff; border-radius: 20px; padding: 22px; }
 .welcome { min-height: calc(100vh - 120px); display: grid; place-items: center; }
 .welcome .card { width: min(560px, 100%); padding: 36px; }
+.welcome { gap: 16px; align-content: center; }
+.welcome .welcome-sync { padding: 24px 36px; }
+.welcome-sync h3 { margin-top: 0; }
+.modal .choice { display: block; width: 100%; text-align: left; margin-bottom: 10px; line-height: 1.5; }
+.modal .choice small { font-weight: 400; opacity: 0.8; }
+.sync-line { font-size: 14px; color: var(--faint); }
+.sync-line.saved { color: #2f8f5b; }
+.sync-line.error, .sync-line.conflict { color: var(--bad); }
 .error { color: var(--bad); }
 .note { margin-top: 28px; color: var(--faint); font-size: 12px; line-height: 1.5; }
 .list-verse { padding: 10px 0; border-top: 1px solid var(--line); }
