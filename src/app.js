@@ -2316,6 +2316,7 @@
       '<article class="card" style="margin-bottom:16px"><h3>맞힌 비율</h3>' + lineChart(accuracy, true) + '<p class="faint">그 날 확인한 문제가 있을 때만 점이 생깁니다.</p></article>' +
       '<article class="card" style="margin-bottom:16px"><h3>머문 시간</h3>' + barChart(usage.map((item) => ({ v: item.v, tick: Number(item.key.slice(8)), label: item.key + " " + Math.round(item.v) + "분" }))) + "</article>" +
       '<article class="card" style="margin-bottom:16px"><h3>사용한 날</h3><div class="heat">' + heatHtml() + '</div><p class="faint">색이 진할수록 그 날의 점수, 곧 암송하고 기도하고 기록한 양이 큽니다.</p></article>' +
+      installCardHtml() +
       '<article class="card" style="margin-bottom:16px"><h3>읽는 목소리</h3><p class="faint" id="voice-note">' + esc(voiceNote()) + '</p><div class="row"><select class="voice" data-act="voice">' + voiceOptionsHtml() + '</select><button class="btn" type="button" data-act="voice-sample">들어 보기</button></div></article>' +
       '<article class="card" style="margin-bottom:16px"><h3>음성입력 정확도</h3><p class="faint">Chrome·Edge에서는 브라우저의 음성인식을 먼저 씁니다. 그것을 쓸 수 없을 때 이 기기 안의 음성 모델이 받아 적습니다.</p><div class="row">' +
       [["base", "빠르게 · 기본", "처음 한 번 약 73MB"], ["small", "정확도 우선", "처음 한 번 약 238MB · 받아 적기 2~3배 느림"]].map(([key, name, info]) => '<button class="btn ' + ((state.earModel || "base") === key ? "gold" : "ghost") + '" type="button" data-act="ear-model" data-model="' + key + '" aria-pressed="' + ((state.earModel || "base") === key) + '">' + name + '<br><small class="faint">' + info + "</small></button>").join("") + "</div></article>" +
@@ -2324,6 +2325,45 @@
       '<article class="card"><h3>이름</h3><form data-act="rename" class="row"><input class="textin" name="name" value="' + esc(state.name) + '" maxlength="16"><button class="btn" type="submit">바꾸기</button></form>' +
       '<form data-act="reset" style="margin-top:18px"><p class="faint">기록을 모두 지우려면 초기화라고 적고 버튼을 누르세요.</p><div class="row"><input class="textin" name="word" placeholder="초기화"><button class="btn" type="submit">기록 지우기</button></div></form></article>';
   }
+
+  let installPrompt = null;
+
+  function standalone() {
+    return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  }
+
+  function installCardHtml() {
+    let body;
+    if (standalone()) {
+      body = '<p class="faint">지금 앱으로 열려 있습니다. 홈 화면의 Walking Bible 아이콘으로 바로 들어오세요.</p>';
+    } else if (installPrompt) {
+      body = '<p class="faint">홈 화면에 아이콘을 두고 주소창 없이 앱처럼 엽니다. 한 번 연 화면과 계시록 본문은 인터넷이 끊겨도 열립니다.</p><div class="row"><button class="btn gold" type="button" data-act="install">앱으로 설치</button></div>';
+    } else if (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) {
+      body = '<p class="faint">Safari 아래쪽의 공유 버튼을 누르고 <b>홈 화면에 추가</b>를 고르면 앱처럼 쓸 수 있습니다.</p>';
+    } else {
+      body = '<p class="faint">Chrome이나 Edge 주소창 오른쪽의 설치 아이콘, 또는 메뉴의 <b>앱 설치</b>·<b>홈 화면에 추가</b>를 누르면 앱처럼 쓸 수 있습니다.</p>';
+    }
+    return '<article class="card" style="margin-bottom:16px"><h3>앱으로 쓰기</h3>' + body + "</article>";
+  }
+
+  async function installApp() {
+    if (!installPrompt) return;
+    const prompt = installPrompt;
+    installPrompt = null;
+    prompt.prompt();
+    await prompt.userChoice.catch(() => null);
+    if (ui.page === "stats") render();
+  }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    installPrompt = event;
+    if (ui.page === "stats") render();
+  });
+  window.addEventListener("appinstalled", () => {
+    installPrompt = null;
+    if (ui.page === "stats") render();
+  });
 
   function donut(rate) {
     const safe = Math.max(0, Math.min(1, rate || 0));
@@ -2641,6 +2681,7 @@
     }
     if (act === "speak") return speakVerse(ui.session.step.id);
     if (act === "export") return exportState();
+    if (act === "install") return installApp();
     if (act === "sync-pick") { S.resolve(el.dataset.side === "local" ? "local" : "remote"); render(); return; }
     if (act === "sync-now") { S.pull(); return; }
     if (act === "sync-forgot") { const form = el.closest("form"); if (form) syncForgot(form); return; }
@@ -2842,6 +2883,10 @@
   stamp = today();
   startSync();
   render();
+
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+  }
 
   setInterval(() => {
     const clock = document.getElementById("clock");
