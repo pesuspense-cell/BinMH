@@ -809,9 +809,7 @@
     form = live;
     const field = form.elements.text || null;
     if (field) {
-      const classic = E.toClassic(said, heardTarget(form)) || said;
-      const base = field.value.trim();
-      field.value = (base ? base + " " : "") + classic;
+      field.value = E.toClassic(said, heardTarget(form)) || said;
       field.dataset.spoken = "1";
       field.dispatchEvent(new Event("input", { bubbles: true }));
       return true;
@@ -823,6 +821,12 @@
     const whole = parts.length >= Math.max(4, Math.floor(verseWords.length / 2));
     const slots = whole ? E.alignHeard(said, verseWords.join(" ")) : null;
     let placed = false;
+    question.units.forEach((_, n) => {
+      const input = form.elements["u" + n];
+      if (!input) return;
+      input.value = "";
+      delete input.dataset.spoken;
+    });
     question.units.forEach((unit, n) => {
       const input = form.elements["u" + n];
       let word = "";
