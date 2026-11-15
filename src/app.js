@@ -1829,18 +1829,18 @@
 
   function navHtml() {
     const pages = [
-      ["home", "오늘"],
-      ["practice", "암송"],
-      ["review", "복습"],
-      ["chapters", "장"],
-      ["journal", "일기"],
-      ["stats", "기록"]
+      ["home", "오늘", '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'],
+      ["practice", "암송", '<path d="M3 5.5C5.5 4 8.5 4 12 6c3.5-2 6.5-2 9-.5V19c-2.5-1.5-5.5-1.5-9 .5-3.5-2-6.5-2-9-.5z"/><path d="M12 6v13.5"/>'],
+      ["review", "복습", '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>'],
+      ["chapters", "장", '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>'],
+      ["journal", "일기", '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'],
+      ["stats", "기록", '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>']
     ];
     const current = ui.page === "read" ? "chapters" : ui.page === "session" ? "practice" : ui.page;
     const info = E.levelInfo(state.xp);
     return '<header class="nav"><button class="brand" type="button" data-act="nav" data-page="home">' + logo() +
-      '<span><strong>일곱등잔</strong><small>REVELATION</small></span></button><nav class="links">' +
-      pages.map(([page, label]) => '<button type="button" data-act="nav" data-page="' + page + '" class="' + (current === page ? "active" : "") + '">' + label + "</button>").join("") +
+      '<span><strong>일곱등잔</strong><small>REVELATION</small></span></button><nav class="links" aria-label="메뉴">' +
+      pages.map(([page, label, icon]) => '<button type="button" data-act="nav" data-page="' + page + '" class="' + (current === page ? "active" : "") + '"' + (current === page ? ' aria-current="page"' : "") + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icon + "</svg><span>" + label + "</span></button>").join("") +
       '</nav><div class="nav-right"><span class="streak">연속 ' + activeStreak() + '일</span><span class="level">Lv.' + info.level + " " + esc(info.title) +
       '</span><span class="who">' + esc(state.name) + '</span><button class="btn gold" type="button" data-act="start-daily">' +
       (ui.session && ui.session.phase !== "done" ? "이어하기" : "오늘의 암송") + "</button></div></header>";
