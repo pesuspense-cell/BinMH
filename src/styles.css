@@ -59,11 +59,20 @@ option { background: #0d1f4f; color: var(--ink); }
   background: rgba(8, 20, 54, 0.55); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
 }
 .brand { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; color: var(--ink); }
-.brand svg { width: 32px; height: 32px; filter: drop-shadow(0 0 10px rgba(247, 214, 90, 0.45)); }
+.brand svg { width: 34px; height: 34px; filter: drop-shadow(0 0 8px rgba(143, 189, 240, 0.45)); }
 .brand strong { display: block; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
 .brand small { display: block; color: var(--faint); font-size: 10px; letter-spacing: 0.16em; }
-.logo-flame { fill: var(--star); }
-.logo-stand { fill: #d6e0fa; }
+.walker .wb-limb { fill: none; stroke: #f4e7c8; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+.walker .wb-page { fill: #f6ecd2; }
+.walker .wb-cover { fill: #2f68d0; }
+.walker .wb-spine { fill: #1c3f8f; }
+.walker .wb-cross { fill: none; stroke: var(--star); stroke-width: 2.4; stroke-linecap: round; }
+.walker .wb-eye { fill: #fff; }
+.walker .wb-pupil { fill: #10214d; }
+.walker .wb-smile { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+.gate-mascot { width: 88px; height: 88px; margin-bottom: 6px; }
+.gate-mascot svg { width: 100%; height: 100%; filter: drop-shadow(0 6px 18px rgba(143, 189, 240, 0.35)); animation: walker-bob 1.2s ease-in-out infinite; }
+@keyframes walker-bob { 50% { transform: translateY(-3px) rotate(-2deg); } }
 .links { display: flex; gap: 4px; flex: 1; }
 .links button {
   background: none; border: 0; color: var(--muted); padding: 7px 14px; border-radius: 999px; font-size: 15px;
@@ -498,7 +507,7 @@ textarea:focus, .textin:focus { border-color: rgba(247, 214, 90, 0.55); backgrou
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chunk, .lamp.lit .flame, .seal.dim, .stones i.dim, .pill.hint { animation: none; }
+  .chunk, .lamp.lit .flame, .seal.dim, .stones i.dim, .pill.hint, .gate-mascot svg { animation: none; }
   .chart-line { animation: none; stroke-dashoffset: 0; }
   .chart-area { animation: none; opacity: 1; }
   .ring { animation: none; stroke-dashoffset: calc(289 - 289 * var(--p)); }

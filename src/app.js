@@ -1808,7 +1808,7 @@
   function gateHtml() {
     if (!syncOn()) return "";
     const info = S.status();
-    const head = '<p class="eyebrow">개역한글 · 요한계시록</p><h1>일곱등잔</h1>';
+    const head = '<div class="gate-mascot">' + logo() + '</div><p class="eyebrow">개역한글 · 요한계시록</p><h1>Walking Bible</h1>';
     if (info.recovery) return '<div class="welcome"><article class="card">' + head + "<h3>비밀번호 바꾸기</h3>" + recoveryHtml() + "</article></div>";
     if (info.signedIn && info.phase !== "loading") return "";
     if (info.phase === "loading" || info.phase === "off") {
@@ -2044,7 +2044,16 @@
   }
 
   function logo() {
-    return '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3c2.2 3.2 5.2 5.2 5.2 8.4a5.2 5.2 0 1 1-10.4 0C10.8 8.2 13.8 6.2 16 3z" class="logo-flame"/><rect x="14.2" y="17" width="3.6" height="8" rx="1" class="logo-stand"/><path d="M10 17.2h12l-1.3 2.2H11.3L10 17.2z" class="logo-stand"/></svg>';
+    return '<svg class="walker" viewBox="0 0 64 64" aria-hidden="true">' +
+      '<g class="wb-limb"><path d="M27 47l-5 9h-4"/><path d="M37 47l5 8h5"/><path d="M19 27c-5 3-7 7-7 12"/><path d="M45 25c5 1 8-1 10-6"/></g>' +
+      '<rect class="wb-page" x="21" y="9" width="27" height="38" rx="3"/>' +
+      '<rect class="wb-cover" x="17" y="7" width="27" height="40" rx="3.5"/>' +
+      '<rect class="wb-spine" x="17" y="7" width="5" height="40" rx="2"/>' +
+      '<path class="wb-cross" d="M33 11.5v8M29.5 14.5h7"/>' +
+      '<circle class="wb-eye" cx="28.5" cy="27" r="2.6"/><circle class="wb-eye" cx="37" cy="27" r="2.6"/>' +
+      '<circle class="wb-pupil" cx="29.2" cy="27.4" r="1.2"/><circle class="wb-pupil" cx="37.7" cy="27.4" r="1.2"/>' +
+      '<path class="wb-smile" d="M29 33.5c2.3 2.2 5.4 2.2 7.6 0"/>' +
+      "</svg>";
   }
 
   function diffHtml(input, answer, spoken) {
@@ -2068,7 +2077,7 @@
     const current = ui.page === "read" ? "chapters" : ui.page === "session" ? "practice" : ui.page;
     const info = E.levelInfo(state.xp);
     return '<header class="nav"><button class="brand" type="button" data-act="nav" data-page="home">' + logo() +
-      '<span><strong>일곱등잔</strong><small>REVELATION</small></span></button><nav class="links" aria-label="메뉴">' +
+      '<span><strong>Walking Bible</strong><small>REVELATION</small></span></button><nav class="links" aria-label="메뉴">' +
       pages.map(([page, label, icon]) => '<button type="button" data-act="nav" data-page="' + page + '" class="' + (current === page ? "active" : "") + '"' + (current === page ? ' aria-current="page"' : "") + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icon + "</svg><span>" + label + "</span></button>").join("") +
       '</nav><div class="nav-right"><span class="streak">연속 ' + activeStreak() + '일</span><span class="level">Lv.' + info.level + " " + esc(info.title) +
       '</span><span class="who">' + esc(state.name) + '</span><button class="btn gold" type="button" data-act="start-daily">' +
@@ -2562,7 +2571,7 @@
     ui.skipCapture = false;
     if (state.name) ensurePick();
     const root = document.getElementById("app");
-    document.title = "일곱등잔 · 계시록 암송";
+    document.title = "Walking Bible · 계시록 암송";
     const gate = gateHtml();
     if (gate) {
       root.innerHTML = "<main>" + gate + "</main>";
@@ -2579,7 +2588,7 @@
     else if (ui.page === "stats") body = statsHtml();
     else body = homeHtml();
     root.innerHTML = (state.name ? navHtml() : "") + "<main>" + body + "</main>" + (conflictHtml() || modalHtml());
-    document.title = "일곱등잔 · 계시록 암송";
+    document.title = "Walking Bible · 계시록 암송";
     persist();
     const clock = document.getElementById("clock");
     if (clock) clock.textContent = formatClock();
