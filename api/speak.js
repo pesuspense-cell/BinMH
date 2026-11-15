@@ -12,6 +12,31 @@ const INSTRUCTIONS = [
 const verses = new Map();
 bible.chapters.forEach((ch) => ch.verses.forEach((verse) => verses.set(ch.chapter + ":" + verse.v, verse.t)));
 
+const RATE = 24000;
+const LEAD_SECONDS = 0.15;
+const TAIL_SECONDS = 1;
+
+function wav(pcm) {
+  const lead = Math.round(RATE * LEAD_SECONDS) * 2;
+  const tail = Math.round(RATE * TAIL_SECONDS) * 2;
+  const size = lead + pcm.length + tail;
+  const out = Buffer.alloc(44 + size);
+  out.write("RIFF", 0);
+  out.writeUInt32LE(36 + size, 4);
+  out.write("WAVEfmt ", 8);
+  out.writeUInt32LE(16, 16);
+  out.writeUInt16LE(1, 20);
+  out.writeUInt16LE(1, 22);
+  out.writeUInt32LE(RATE, 24);
+  out.writeUInt32LE(RATE * 2, 28);
+  out.writeUInt16LE(2, 32);
+  out.writeUInt16LE(16, 34);
+  out.write("data", 36);
+  out.writeUInt32LE(size, 40);
+  pcm.copy(out, 44 + lead);
+  return out;
+}
+
 function fail(res, status, error) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -39,16 +64,16 @@ module.exports = async (req, res) => {
         voice,
         input: /[.!?]$/.test(text) ? text : text + ".",
         instructions: INSTRUCTIONS,
-        response_format: "mp3"
+        response_format: "pcm"
       })
     });
     if (!reply.ok) {
       const data = await reply.json().catch(() => ({}));
       return fail(res, 502, (data.error && data.error.message) || "openai " + reply.status);
     }
-    const audio = Buffer.from(await reply.arrayBuffer());
+    const audio = wav(Buffer.from(await reply.arrayBuffer()));
     res.statusCode = 200;
-    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Content-Type", "audio/wav");
     res.setHeader("Content-Length", audio.length);
     res.setHeader("Cache-Control", "public, max-age=31536000, s-maxage=31536000, immutable");
     res.end(audio);
