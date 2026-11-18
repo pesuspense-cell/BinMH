@@ -375,6 +375,42 @@ html[data-theme="day"] .hero {
 .card { padding: 22px; }
 .card h3 { margin: 0 0 14px; font-size: 18px; }
 
+.adventure-card { overflow: hidden; }
+.adventure-card h3 { margin-bottom: 8px; }
+.adv-map {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(26, 32, 51, 0.18);
+  background: linear-gradient(180deg, rgba(154, 215, 232, 0.35), rgba(243, 226, 184, 0.45));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.adv-map svg { display: block; width: 100%; height: auto; min-height: 240px; background: transparent; }
+.adv-badge {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 252, 246, 0.88);
+  border: 1px solid rgba(26, 32, 51, 0.16);
+  color: #1a2033;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.adv-badge strong { font-size: 13px; }
+html[data-theme="evening"] .adv-badge {
+  background: rgba(12, 24, 56, 0.82);
+  border-color: rgba(247, 214, 90, 0.28);
+  color: #f4efe4;
+}
+.adventure-done { margin: 14px 0 18px; }
+.adv-chibi { transition: transform 40ms linear; }
+
 .prayer-row { display: flex; gap: 8px; }
 .slot {
   flex: 1; border-radius: 16px; border: 1px solid var(--line); background: var(--fill); padding: 14px 8px; color: var(--ink);

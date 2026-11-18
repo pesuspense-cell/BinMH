@@ -1,10 +1,11 @@
 (function () {
-  if (!window.REVELATION || !window.LampEngine) {
+  if (!window.REVELATION || !window.LampEngine || !window.LampAdventure) {
     document.getElementById("app").innerHTML = "<main><p>본문을 불러오지 못했습니다.</p></main>";
     return;
   }
 
   const E = window.LampEngine;
+  const A = window.LampAdventure;
   const B = window.LampBible;
   const S = window.LampSync;
   const list = E.flatten(window.REVELATION);
@@ -49,7 +50,8 @@
     syncBusy: false,
     syncEmail: "",
     syncNote: "",
-    syncKey: ""
+    syncKey: "",
+    adventureWalk: null
   };
 
   let state = load();
@@ -66,8 +68,87 @@
       chapters: {},
       pick: null,
       voiceURI: "",
-      earModel: "base"
+      earModel: "base",
+      dailyMode: "flex",
+      adventureDay: 0,
+      adventureAdvancedOn: ""
     };
+  }
+
+  function dailyMode() {
+    return state.dailyMode === "fixed5" ? "fixed5" : "flex";
+  }
+
+  function dailyPacks() {
+    return A.buildPacks(list, dailyMode());
+  }
+
+  function adventurePath() {
+    return A.buildPath(dailyPacks().length);
+  }
+
+  function currentPack() {
+    const packs = dailyPacks();
+    for (let i = 0; i < packs.length; i++) {
+      if (packs[i].ids.some((id) => (state.cards[id]?.stage || 0) < 3)) {
+        return Object.assign({ index: i }, packs[i]);
+      }
+    }
+    return null;
+  }
+
+  function todayPackIds() {
+    const pack = currentPack();
+    return pack ? pack.ids.slice() : [];
+  }
+
+  function ensureAdventure() {
+    if (typeof state.adventureDay !== "number" || state.adventureDay < 0) state.adventureDay = 0;
+    const max = Math.max(0, dailyPacks().length - 1);
+    if (state.adventureDay > max) state.adventureDay = max;
+    if (!state.adventureAdvancedOn) state.adventureAdvancedOn = "";
+  }
+
+  function advanceAdventure() {
+    ensureAdventure();
+    if (state.adventureAdvancedOn === today()) return false;
+    const max = Math.max(0, dailyPacks().length - 1);
+    if (state.adventureDay >= max) {
+      state.adventureAdvancedOn = today();
+      return false;
+    }
+    const from = state.adventureDay;
+    state.adventureDay = Math.min(max, state.adventureDay + 1);
+    state.adventureAdvancedOn = today();
+    ui.adventureWalk = { from, to: state.adventureDay, started: Date.now() };
+    return true;
+  }
+
+  function adventureMapHtml(opts) {
+    ensureAdventure();
+    const path = adventurePath();
+    const walk = ui.adventureWalk;
+    const walking = !!(walk && opts && opts.animate);
+    const walkT = walking ? Math.min(1, (Date.now() - walk.started) / 1200) : 0;
+    return A.mapHtml({
+      path,
+      day: walking ? walk.from : state.adventureDay,
+      walking,
+      walkT
+    });
+  }
+
+  function tickAdventureWalk() {
+    if (!ui.adventureWalk) return;
+    const elapsed = Date.now() - ui.adventureWalk.started;
+    if (elapsed >= 1200) {
+      ui.adventureWalk = null;
+      render();
+      return;
+    }
+    const slot = document.querySelector("[data-adv-slot]");
+    if (slot) slot.innerHTML = adventureMapHtml({ animate: true });
+    requestAnimationFrame(tickAdventureWalk);
   }
 
   function load() {
@@ -162,9 +243,19 @@
   }
 
   function todayGoal() {
-    const passed = day().newPassed.length;
-    const still = list.filter((verse) => (state.cards[verse.id]?.stage || 0) < 3).length;
-    return Math.min(5, passed + still);
+    const pack = currentPack();
+    if (!pack) return 0;
+    const passedInPack = day().newPassed.filter((id) => pack.ids.includes(id)).length;
+    const still = pack.ids.filter((id) => (state.cards[id]?.stage || 0) < 3).length;
+    return Math.min(pack.ids.length, passedInPack + still);
+  }
+
+  function todayRoom() {
+    const goal = todayGoal();
+    if (!goal) return 0;
+    const packIds = new Set(todayPackIds());
+    const waiting = waitingIds().filter((id) => packIds.has(id));
+    return Math.max(0, goal - day().newPassed.filter((id) => packIds.has(id)).length - waiting.length);
   }
 
   function dueVerses() {
@@ -1110,9 +1201,11 @@
       render();
       return;
     }
-    const waiting = waitingIds();
+    const packIds = todayPackIds();
+    const packSet = new Set(packIds);
+    const waiting = waitingIds().filter((id) => !packIds.length || packSet.has(id));
     const due = dueVerses();
-    const room = Math.max(0, 5 - day().newPassed.length - waiting.length);
+    const room = todayRoom();
     const learnIds = nextNew(room).map((verse) => verse.id);
     if (!waiting.length && !due.length && !learnIds.length) {
       ui.page = "review";
@@ -1123,6 +1216,8 @@
     const session = baseSession("daily");
     session.waiting = waiting;
     session.learnIds = learnIds;
+    session.packIds = packIds;
+    session.dailyGoal = todayGoal();
     session.queue = reviews.map((id, index) => production(id, "rev" + index));
     session.block = reviews.length ? "review" : "";
     session.phase = reviews.length ? "exam" : "read";
@@ -1426,22 +1521,34 @@
 
   function finishDaily() {
     const session = ui.session;
-    const goal = todayGoal();
+    const packIds = session.packIds || todayPackIds();
+    const packSet = new Set(packIds);
+    const goal = session.dailyGoal != null ? session.dailyGoal : (packIds.length || todayGoal());
     const todayLog = day();
-    if (goal > 0 && todayLog.newPassed.length >= goal && !todayLog.bonus) {
+    const doneInPack = todayLog.newPassed.filter((id) => !packSet.size || packSet.has(id)).length;
+    const packCleared = packIds.length
+      ? packIds.every((id) => (state.cards[id]?.stage || 0) >= 3)
+      : goal > 0 && doneInPack >= goal;
+    const met = goal > 0 && (packCleared || doneInPack >= goal);
+    if (met && !todayLog.bonus) {
       todayLog.bonus = true;
       addXp(40);
       session.summaryBonus = true;
     }
+    let advanced = false;
+    if (met) advanced = advanceAdventure();
+    ensureAdventure();
     session.phase = "done";
     session.feedback = null;
     session.summary = {
       kind: "daily",
       goal,
-      done: todayLog.newPassed.length,
+      done: doneInPack,
       bonus: !!session.summaryBonus,
       missed: session.missed || [],
-      lamps: lampsLit() > session.lampsAtStart
+      lamps: lampsLit() > session.lampsAtStart,
+      advanced,
+      finale: state.adventureDay >= Math.max(0, adventurePath().length - 1)
     };
   }
 
@@ -2067,17 +2174,22 @@
   }
 
   function welcomeHtml() {
-    return '<div class="welcome"><form class="card" data-act="welcome"><p class="eyebrow">개역한글 · 요한계시록</p><h1>하루에 다섯 절, 등잔을 켜 갑니다</h1><p class="lede">읽고, 빈칸을 메우고, 힌트 없이 적습니다. 잊기 직전에 다시 꺼내고, 한 장을 다 외우면 전체로 확인합니다.</p><label class="stack">뭐라고 부를까요<input class="textin" id="name" name="name" maxlength="16" placeholder="이름" autocomplete="name"></label>' +
+    return '<div class="welcome"><form class="card" data-act="welcome"><p class="eyebrow">개역한글 · 요한계시록</p><h1>하루 한 묶음, 천국의 길을 갑니다</h1><p class="lede">길이 맞는 만큼 읽고, 빈칸을 메우고, 힌트 없이 적습니다. 오늘 몫을 채우면 순례자가 한 걸음 나아갑니다.</p><label class="stack">뭐라고 부를까요<input class="textin" id="name" name="name" maxlength="16" placeholder="이름" autocomplete="name"></label>' +
       (ui.nameError ? '<p class="error">' + esc(ui.nameError) + "</p>" : "") +
       '<p><button class="btn gold" type="submit">암송을 시작할게요</button></p></form>' + welcomeSyncHtml() + "</div>";
   }
 
   function homeHtml() {
+    ensureAdventure();
     const goal = todayGoal();
-    const passed = day().newPassed.length;
+    const pack = currentPack();
+    const packSet = new Set(pack ? pack.ids : []);
+    const passed = day().newPassed.filter((id) => !packSet.size || packSet.has(id)).length;
     const due = dueVerses().length;
-    const upcoming = nextNew(Math.max(0, 5 - passed));
+    const upcoming = nextNew(todayRoom() || (pack ? pack.ids.length : 0));
     const plan = upcoming.length ? "계시록 " + upcoming[0].id + " – " + upcoming[upcoming.length - 1].id : "이제 외운 장을 지키는 자리입니다";
+    const modeNote = dailyMode() === "fixed5" ? "고정 5절" : "길이 맞춤";
+    const chars = pack ? pack.chars : 0;
     const heroTitle = goal === 0 ? "새 절은 모두 통과했습니다" : goal + "절 중 " + Math.min(passed, goal) + "절";
     const pick = state.pick ? map.get(state.pick.id) : null;
     const pickCard = pick ? state.cards[pick.id] : null;
@@ -2089,10 +2201,16 @@
     const letters = known ? list.filter((verse) => (state.cards[verse.id]?.stage || 0) >= 3).reduce((sum, verse) => sum + verse.text.replace(/\s/g, "").length, 0) : 0;
     const hello = greeting();
     const cut = hello.lastIndexOf(", ");
+    const path = adventurePath();
+    const atEnd = state.adventureDay >= path.length - 1 && knownCount() >= list.length;
     return '<p class="clock" id="clock"></p><h1>' + esc(hello.slice(0, cut + 1)) + "<br>" + esc(hello.slice(cut + 2)) + "</h1>" +
       '<label class="search"><span aria-hidden="true">⌕</span><input id="q" placeholder="성경 전서에서 찾기: 낱말, 요 3:16, 시 23, 계 21:4" value="' + esc(ui.query) + '" autocomplete="off"></label>' +
       '<div id="search-results">' + searchHtml(ui.query) + "</div>" +
-      '<section class="hero"><div><p class="eyebrow">오늘 암송</p><h2>' + esc(heroTitle) + "</h2><p class=\"muted\">" + esc(plan) + (due ? " · 먼저 복습 " + due + "절" : "") + '</p></div><button class="btn gold" type="button" data-act="start-daily">' + (ui.session && ui.session.phase !== "done" ? "이어하기" : goal === 0 ? "복습하러 가기" : "암송 시작") + "</button></section>" +
+      '<section class="hero"><div><p class="eyebrow">오늘 암송 · ' + modeNote + (chars ? " · 한글 " + chars + "자" : "") + '</p><h2>' + esc(heroTitle) + "</h2><p class=\"muted\">" + esc(plan) + (due ? " · 먼저 복습 " + due + "절" : "") + '</p></div><button class="btn gold" type="button" data-act="start-daily">' + (ui.session && ui.session.phase !== "done" ? "이어하기" : goal === 0 ? "복습하러 가기" : "암송 시작") + "</button></section>" +
+      '<article class="card adventure-card" style="margin-bottom:16px"><div class="stats-head"><div><p class="eyebrow">천국의 길</p><h3>' + (atEnd ? "보좌 앞에 섰습니다" : "순례 지도") + "</h3></div><p class=\"faint\">Day " + (state.adventureDay + 1) + " / " + path.length + "</p></div>" +
+      '<div data-adv-slot>' + adventureMapHtml({ animate: !!ui.adventureWalk }) + "</div>" +
+      (atEnd ? '<p class="lede" style="margin-top:12px">어린양이 보좌에 계시니, 계시록의 길을 다 걸었습니다.</p>' : '<p class="muted" style="margin-top:10px">오늘 암송 몫을 채우면 한 칸 앞으로 갑니다.</p>') +
+      "</article>" +
       '<div class="grid-2"><article class="card"><h3>오늘의 기도</h3><div class="prayer-row">' + prayerButtons() + '</div><p class="muted">세 번을 채운 날 ' + prayerStreak() + '일</p>' + weekDots() + '</article>' +
       '<article class="card pick"><p class="eyebrow">오늘 마음에 둘 구절</p>' + (pick ? '<p class="faint">' + esc(refText(pick.id)) + (E.MARKS[pick.id] ? " · " + esc(E.MARKS[pick.id]) : "") + '</p><blockquote>「' + esc(pick.text) + '」</blockquote><p class="why">' + esc(pickReason) + '</p><button class="btn" type="button" data-act="open-pick">' + ((state.cards[pick.id]?.stage || 0) >= 3 ? "이 절 확인하기" : "오늘의 암송에서 만나기") + "</button>" : "") + "</article></div>" +
       '<article class="card"><h3>켜진 등잔</h3><div class="lamps">' + lampsHtml() + '</div><p>' + known + " / " + list.length + "절 · 새긴 글자 " + letters.toLocaleString("ko-KR") + '</p><div class="meter"><span style="--w:' + (known / list.length * 100) + '%"></span></div><div class="stones">' + stonesHtml() + '</div><div class="xpbar" style="margin-top:14px"><span style="--w:' + (info.into / info.span * 100) + '%"></span></div><p class="faint">Lv.' + info.level + " " + esc(info.title) + " · 오늘 " + day().xp + "점</p></article>" +
@@ -2136,10 +2254,13 @@
   function footHtml() {
     const todayLog = day();
     const goal = todayGoal();
+    const pack = currentPack();
+    const packSet = new Set(pack ? pack.ids : []);
+    const passed = todayLog.newPassed.filter((id) => !packSet.size || packSet.has(id)).length;
     const prayers = ["morning", "noon", "evening"].filter((key) => todayLog.prayer[key]).length;
     const wrote = state.journal.some((entry) => entry.day === today());
     const items = [
-      [goal === 0 || todayLog.newPassed.length >= goal, goal ? "새 절 " + Math.min(todayLog.newPassed.length, goal) + "/" + goal : "새 절은 모두 통과", "start-daily", ""],
+      [goal === 0 || passed >= goal, goal ? "새 절 " + Math.min(passed, goal) + "/" + goal : "새 절은 모두 통과", "start-daily", ""],
       [todayLog.reviews > 0, "복습 " + todayLog.reviews + "절", "nav", "review"],
       [prayers === 3, "기도 " + prayers + "/3", "pray-jump", ""],
       [wrote, wrote ? "신앙일기를 남겼습니다" : "신앙일기 한 줄", "nav", "journal"],
@@ -2180,11 +2301,16 @@
   }
 
   function practiceHtml() {
+    ensureAdventure();
     const goal = todayGoal();
-    const upcoming = nextNew(Math.max(0, 5 - day().newPassed.length));
+    const pack = currentPack();
+    const packSet = new Set(pack ? pack.ids : []);
+    const passed = day().newPassed.filter((id) => !packSet.size || packSet.has(id)).length;
+    const upcoming = nextNew(todayRoom() || (pack ? pack.ids.length : 0));
     const due = dueVerses().length;
+    const modeLabel = dailyMode() === "fixed5" ? "고정 5절" : "길이 맞춤 · 약 80일";
     const methods = [
-      ["1", "순서대로 다섯 절", "앞 절 끝에 다음 절이 매달리도록, 책의 흐름을 따라 새깁니다."],
+      ["1", "길이 맞는 묶음", "한글 길이에 맞춰 하루 몫을 잡고, 책의 흐름을 따라 새깁니다. 기록에서 고정 5절도 고를 수 있습니다."],
       ["2", "읽기", "귀 아이콘으로 듣고, 소리 내어 읽은 뒤 다음으로 넘어갑니다."],
       ["3", "빈칸", "가려진 말을 스스로 꺼내면 기억이 남습니다."],
       ["4", "백지 인출", "힌트 없이 적는 자리에서만 통과합니다."],
@@ -2192,7 +2318,8 @@
       ["6", "섞기", "다른 절과 섞어 물어 순서 단서에만 기대지 않게 합니다."],
       ["7", "장 전체와 지키기", "한 장을 다 외우면 전체 시험이 열리고, 외운 장은 등불이 흔들릴 때 다시 꺼냅니다."]
     ];
-    return '<p class="eyebrow">오늘의 길</p><h1>다섯 절을 새기는 길</h1><p class="lede">' + (due ? "밀린 복습 " + due + "절을 먼저 한 뒤, " : "") + (goal ? "새 절 " + (goal - Math.min(day().newPassed.length, goal)) + "절이 남아 있습니다." : "새 절은 모두 한 번씩 통과했습니다. 복습과 장 지키기로 불을 유지합니다.") + "</p>" +
+    return '<p class="eyebrow">오늘의 길 · ' + modeLabel + '</p><h1>천국의 길을 새기는 날</h1><p class="lede">' + (due ? "밀린 복습 " + due + "절을 먼저 한 뒤, " : "") + (goal ? "새 절 " + (goal - Math.min(passed, goal)) + "절이 남아 있습니다." : "새 절은 모두 한 번씩 통과했습니다. 복습과 장 지키기로 불을 유지합니다.") + "</p>" +
+      '<article class="card adventure-card" style="margin-bottom:16px"><p class="eyebrow">천국의 길</p><div data-adv-slot>' + adventureMapHtml({}) + "</div></article>" +
       '<article class="card"><h3>오늘 만날 절</h3>' + (upcoming.length ? upcoming.map((verse) => '<p class="list-verse"><b>' + esc(refText(verse.id)) + "</b> " + esc(E.words(verse.text).slice(0, 8).join(" ")) + "…</p>").join("") : '<p class="muted">새로 열 절이 없습니다.</p>') +
       '<p><button class="btn gold" type="button" data-act="start-daily">' + (ui.session && ui.session.phase !== "done" ? "이어하기" : "시작") + "</button></p></article>" +
       '<article class="card" style="margin-top:16px"><h3>왜 이 순서인가요</h3><div class="methods">' + methods.map((item) => "<div><b>" + item[0] + "</b><p><strong>" + item[1] + "</strong><br><span class=\"muted\">" + item[2] + "</span></p></div>").join("") + "</div></article>";
@@ -2299,6 +2426,9 @@
       '<article class="card" style="margin-bottom:16px"><h3>머문 시간</h3>' + barChart(usage.map((item) => ({ v: item.v, tick: Number(item.key.slice(8)), label: item.key + " " + Math.round(item.v) + "분" }))) + "</article>" +
       '<article class="card" style="margin-bottom:16px"><h3>사용한 날</h3><div class="heat">' + heatHtml() + '</div><p class="faint">색이 진할수록 그 날의 점수, 곧 암송하고 기도하고 기록한 양이 큽니다.</p></article>' +
       installCardHtml() +
+      '<article class="card" style="margin-bottom:16px"><h3>하루 암송 분량</h3><p class="faint">기본은 한글 길이에 맞춘 하루 묶음으로, 계시록이 약 80일에 가깝게 끝나도록 잡습니다. 고정 5절을 고르면 예전처럼 하루 다섯 절입니다. 천국의 길 칸 수는 선택한 방식의 묶음 수에 맞춰집니다.</p><div class="row">' +
+      [["flex", "길이 맞춤", "약 80일 · 한글 묶음"], ["fixed5", "고정 5절", "하루 다섯 절"]].map(([key, name, info]) => '<button class="btn ' + (dailyMode() === key ? "gold" : "ghost") + '" type="button" data-act="daily-mode" data-mode="' + key + '" aria-pressed="' + (dailyMode() === key) + '">' + name + '<br><small class="faint">' + info + "</small></button>").join("") +
+      '</div><p class="faint" style="margin-top:10px">지금 길이는 약 ' + dailyPacks().length + "일 여정입니다.</p></article>" +
       '<article class="card" style="margin-bottom:16px"><h3>읽는 목소리</h3><p class="faint" id="voice-note">' + esc(voiceNote()) + '</p><div class="row"><select class="voice" data-act="voice">' + voiceOptionsHtml() + '</select><button class="btn" type="button" data-act="voice-sample">들어 보기</button></div></article>' +
       '<article class="card" style="margin-bottom:16px"><h3>음성입력 정확도</h3><p class="faint">Chrome·Edge에서는 브라우저의 음성인식을 먼저 씁니다. 그것을 쓸 수 없을 때 이 기기 안의 음성 모델이 받아 적습니다.</p><div class="row">' +
       [["base", "빠르게 · 기본", "처음 한 번 약 73MB"], ["small", "정확도 우선", "처음 한 번 약 238MB · 받아 적기 2~3배 느림"]].map(([key, name, info]) => '<button class="btn ' + ((state.earModel || "base") === key ? "gold" : "ghost") + '" type="button" data-act="ear-model" data-model="' + key + '" aria-pressed="' + ((state.earModel || "base") === key) + '">' + name + '<br><small class="faint">' + info + "</small></button>").join("") + "</div></article>" +
@@ -2549,7 +2679,15 @@
       const met = summary.goal > 0 && summary.done >= summary.goal;
       const learned = day().newPassed.map((id) => "<p class=\"list-verse\">" + esc(refText(id)) + "</p>").join("");
       const missed = (summary.missed || []).map((id) => "<p class=\"list-verse\">" + esc(refText(id)) + " · 다시 확인</p>").join("");
-      return '<div class="panel"><article class="card"><div class="stamp ' + (met ? "in" : "off") + '">' + (met ? "오늘" : "기록") + "</div><h1>" + (met ? "오늘 몫을 채웠습니다" : "오늘 자리를 마쳤습니다") + "</h1><p class=\"lede\">이번 자리에 " + gained + "점이 쌓였습니다." + (summary.bonus ? " 하루 목표를 채워 40점을 더했습니다." : "") + (summary.lamps ? " 등잔이 하나 더 켜졌습니다." : "") + "</p>" +
+      const pathNote = summary.finale
+        ? "보좌 앞에 섰습니다. 천국의 길을 다 걸었습니다."
+        : summary.advanced
+          ? "순례자가 한 칸 앞으로 나아갔습니다."
+          : met
+            ? "오늘 몫을 이미 반영했습니다."
+            : "";
+      return '<div class="panel"><article class="card"><div class="stamp ' + (met ? "in" : "off") + '">' + (met ? "오늘" : "기록") + "</div><h1>" + (summary.finale ? "보좌에 이르렀습니다" : met ? "오늘 몫을 채웠습니다" : "오늘 자리를 마쳤습니다") + "</h1><p class=\"lede\">이번 자리에 " + gained + "점이 쌓였습니다." + (summary.bonus ? " 하루 목표를 채워 40점을 더했습니다." : "") + (summary.lamps ? " 등잔이 하나 더 켜졌습니다." : "") + (pathNote ? " " + pathNote : "") + "</p>" +
+        '<div data-adv-slot class="adventure-done">' + adventureMapHtml({ animate: !!summary.advanced && !!ui.adventureWalk }) + "</div>" +
         (session.lastExam ? "<p>확인 시험 " + session.lastExam.passed + "/" + session.lastExam.of + "절 · " + Math.round(session.lastExam.avg * 100) + "%</p>" : "") +
         learned + missed + '<div class="row"><button class="btn gold" type="button" data-act="nav" data-page="home">오늘 화면</button><button class="btn" type="button" data-act="nav" data-page="journal">한 줄 남기기</button></div></article></div>';
     }
@@ -2603,6 +2741,7 @@
     paintRefPreview(document.getElementById("journal-ref"));
     paintRefPreview(document.getElementById("edit-ref"));
     if (ui.session && ui.session.step) ui.session.step.shake = false;
+    if (ui.adventureWalk) requestAnimationFrame(tickAdventureWalk);
   }
 
   function onClick(event) {
@@ -2656,6 +2795,15 @@
     if (act === "sync-out") return logout(false);
     if (act === "ear-model") {
       state.earModel = el.dataset.model === "small" ? "small" : "base";
+      render();
+      return;
+    }
+    if (act === "daily-mode") {
+      const next = el.dataset.mode === "fixed5" ? "fixed5" : "flex";
+      if (dailyMode() !== next) {
+        state.dailyMode = next;
+        ensureAdventure();
+      }
       render();
       return;
     }
