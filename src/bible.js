@@ -153,9 +153,39 @@
     if (flat || !data) return flat;
     flat = [];
     data.forEach((chapters, b) => chapters.forEach((verses, c) => verses.forEach((text, v) => {
-      flat.push({ book: b + 1, chapter: c + 1, verse: v + 1, text, tight: text.replace(/\s+/g, "") });
+      flat.push({
+        book: b + 1,
+        chapter: c + 1,
+        verse: v + 1,
+        text,
+        tight: text.replace(/\s+/g, ""),
+        id: (b + 1) + "." + (c + 1) + ":" + (v + 1),
+        bookName: BOOKS[b][0],
+        ref: BOOKS[b][0] + " " + (c + 1) + ":" + (v + 1)
+      });
     })));
     return flat;
+  }
+
+  function flatList() {
+    return buildFlat() || [];
+  }
+
+  function sampleVerses(count, seed) {
+    const all = flatList();
+    if (!all.length) return [];
+    const n = Math.max(1, count || 120);
+    const out = [];
+    const step = Math.max(1, Math.floor(all.length / n));
+    const start = Math.abs(seed | 0) % Math.min(step, all.length);
+    for (let i = start; out.length < n && i < all.length; i += step) out.push(all[i]);
+    if (out.length < n) {
+      for (let i = 0; out.length < n && i < all.length; i++) {
+        if ((i - start) % step === 0) continue;
+        out.push(all[i]);
+      }
+    }
+    return out;
   }
 
   function search(query, limit) {
@@ -190,5 +220,8 @@
     return { hits, total, ref: null, book };
   }
 
-  root.LampBible = { BOOKS, REVELATION, load, ready, parseRef, refKey, keyToRef, label, versesOf, textOf, search, bookName, chapterCount, verseCount };
+  root.LampBible = {
+    BOOKS, REVELATION, load, ready, parseRef, refKey, keyToRef, label, versesOf, textOf, search,
+    bookName, chapterCount, verseCount, flatList, sampleVerses
+  };
 })(typeof window !== "undefined" ? window : globalThis);

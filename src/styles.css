@@ -716,12 +716,36 @@ textarea:focus, .textin:focus { border-color: rgba(247, 214, 90, 0.55); backgrou
 }
 .game-pick { text-align: left; cursor: pointer; }
 .game-pick h3 { margin-bottom: 8px; }
+.game-pick .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 .game-shell { max-width: 720px; }
-.game-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.game-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .game-stats { display: flex; gap: 14px; }
 .game-stats span { display: grid; justify-items: center; min-width: 52px; }
 .game-stats b { font-size: 22px; line-height: 1.1; }
 .game-stats small { color: var(--faint); font-size: 11px; }
+.hp-wrap { min-width: min(240px, 100%); margin: 6px 0 10px; }
+.hp-meta {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 10px; margin-bottom: 4px; font-size: 12px; color: var(--muted);
+}
+.hp-meta strong { color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
+.hp-bar {
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, #7a1020 35%, rgba(0, 0, 0, 0.28));
+  border: 1px solid color-mix(in srgb, #ff6b7a 45%, transparent);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.hp-bar span {
+  display: block;
+  height: 100%;
+  width: var(--w);
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8b1018 0%, #d42233 42%, #ff5a5f 100%);
+  box-shadow: 0 0 10px rgba(255, 70, 80, 0.35);
+  transition: width 180ms ease;
+}
 .game-log {
   margin: 0 0 14px;
   padding: 10px 14px;
