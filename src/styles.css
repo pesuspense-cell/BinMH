@@ -22,6 +22,10 @@
   --bad: #ff98ac;
   --bad-soft: rgba(255, 152, 172, 0.15);
   --on-star: #1d1704;
+  --nav-glass: rgba(8, 20, 54, 0.55);
+  --nav-mobile: rgba(8, 20, 54, 0.62);
+  --veil: linear-gradient(180deg, rgba(5, 12, 34, 0.12), rgba(5, 12, 34, 0.42) 70%, rgba(5, 12, 34, 0.6));
+  --scene: url("night.svg?v=2");
   --blur: blur(22px) saturate(165%);
   --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 18px 48px rgba(2, 6, 26, 0.38);
   --radius: 24px;
@@ -31,17 +35,116 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* Morning — Wheat Field with Cypresses feel */
+html[data-theme="morning"] {
+  color-scheme: light;
+  --sky: #d9ecf5;
+  --ink: #1b2f24;
+  --muted: rgba(27, 47, 36, 0.72);
+  --faint: rgba(27, 47, 36, 0.5);
+  --line: rgba(27, 61, 42, 0.14);
+  --line-strong: rgba(27, 61, 42, 0.24);
+  --glass: rgba(255, 250, 235, 0.72);
+  --glass-strong: rgba(255, 248, 228, 0.88);
+  --fill: rgba(226, 176, 75, 0.14);
+  --fill-hover: rgba(226, 176, 75, 0.22);
+  --fill-on: rgba(27, 77, 62, 0.14);
+  --star: #c9892a;
+  --star-soft: rgba(226, 176, 75, 0.22);
+  --ochre: #d4922b;
+  --swirl: #5f8fb8;
+  --swirl-soft: rgba(95, 143, 184, 0.18);
+  --ember: #c9783a;
+  --good: #2f7a4f;
+  --good-soft: rgba(47, 122, 79, 0.14);
+  --bad: #b5485a;
+  --bad-soft: rgba(181, 72, 90, 0.14);
+  --on-star: #241806;
+  --nav-glass: rgba(255, 249, 232, 0.72);
+  --nav-mobile: rgba(255, 249, 232, 0.86);
+  --veil: linear-gradient(180deg, rgba(174, 222, 238, 0.2), rgba(244, 208, 96, 0.18) 55%, rgba(138, 154, 91, 0.28));
+  --scene: none;
+  --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 16px 40px rgba(90, 70, 20, 0.14);
+}
+
+html[data-theme="morning"] body::before {
+  background:
+    radial-gradient(900px 420px at 78% 12%, rgba(255, 255, 255, 0.7), transparent 62%),
+    radial-gradient(720px 380px at 18% 18%, rgba(174, 238, 238, 0.55), transparent 70%),
+    linear-gradient(180deg, #b7dff0 0%, #d7ebf4 28%, #f0d56a 68%, #c9a24a 100%),
+    var(--sky);
+}
+
+html[data-theme="morning"] body::after {
+  background:
+    linear-gradient(115deg, transparent 58%, rgba(27, 77, 62, 0.28) 72%, rgba(20, 58, 46, 0.5) 100%),
+    var(--veil);
+}
+
+/* Day — Almond Blossom feel */
+html[data-theme="day"] {
+  color-scheme: light;
+  --sky: #5eb8c8;
+  --ink: #243028;
+  --muted: rgba(36, 48, 40, 0.72);
+  --faint: rgba(36, 48, 40, 0.5);
+  --line: rgba(36, 48, 40, 0.14);
+  --line-strong: rgba(36, 48, 40, 0.24);
+  --glass: rgba(255, 252, 246, 0.74);
+  --glass-strong: rgba(255, 251, 244, 0.9);
+  --fill: rgba(255, 255, 255, 0.28);
+  --fill-hover: rgba(255, 255, 255, 0.42);
+  --fill-on: rgba(36, 48, 40, 0.12);
+  --star: #d4a017;
+  --star-soft: rgba(212, 160, 23, 0.18);
+  --ochre: #b8892a;
+  --swirl: #2f7f8f;
+  --swirl-soft: rgba(47, 127, 143, 0.16);
+  --ember: #d48a78;
+  --good: #3d7a4e;
+  --good-soft: rgba(61, 122, 78, 0.14);
+  --bad: #b54d5c;
+  --bad-soft: rgba(181, 77, 92, 0.14);
+  --on-star: #241806;
+  --nav-glass: rgba(255, 252, 246, 0.74);
+  --nav-mobile: rgba(255, 252, 246, 0.9);
+  --veil: linear-gradient(180deg, rgba(78, 178, 196, 0.08), rgba(255, 252, 246, 0.22) 55%, rgba(62, 90, 70, 0.16));
+  --scene: none;
+  --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 16px 40px rgba(30, 70, 80, 0.16);
+}
+
+html[data-theme="day"] body::before {
+  background:
+    radial-gradient(circle at 18% 22%, rgba(255, 252, 246, 0.95) 0 1.2%, transparent 1.8%),
+    radial-gradient(circle at 28% 18%, rgba(255, 245, 236, 0.9) 0 0.9%, transparent 1.5%),
+    radial-gradient(circle at 42% 28%, rgba(255, 252, 246, 0.92) 0 1.4%, transparent 2%),
+    radial-gradient(circle at 58% 16%, rgba(255, 240, 230, 0.88) 0 1%, transparent 1.6%),
+    radial-gradient(circle at 72% 30%, rgba(255, 252, 246, 0.9) 0 1.1%, transparent 1.7%),
+    radial-gradient(circle at 84% 20%, rgba(255, 245, 236, 0.85) 0 0.8%, transparent 1.4%),
+    radial-gradient(980px 520px at 50% -10%, rgba(255, 252, 246, 0.35), transparent 60%),
+    linear-gradient(165deg, #4aa8b8 0%, #63c0cf 42%, #7ecad6 100%),
+    var(--sky);
+}
+
+html[data-theme="day"] body::after {
+  background:
+    linear-gradient(125deg, transparent 40%, rgba(58, 72, 42, 0.12) 58%, rgba(42, 52, 32, 0.22) 100%),
+    var(--veil);
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
 body { background: transparent; position: relative; word-break: keep-all; overflow-wrap: break-word; }
 body::before, body::after { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; }
-body::before { background: url("night.svg?v=2") center / cover no-repeat, var(--sky); }
-body::after { z-index: -1; background: linear-gradient(180deg, rgba(5, 12, 34, 0.12), rgba(5, 12, 34, 0.42) 70%, rgba(5, 12, 34, 0.6)); }
+body::before { background: var(--scene) center / cover no-repeat, var(--sky); }
+body::after { z-index: -1; background: var(--veil); }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 ::selection { background: rgba(247, 214, 90, 0.42); color: #fff; }
 ::placeholder { color: var(--faint); }
-option { background: #0d1f4f; color: var(--ink); }
+option { background: var(--glass-strong); color: var(--ink); }
+html[data-theme="morning"] option,
+html[data-theme="day"] option { background: #fffaf0; }
 
 .nav {
   position: sticky;
@@ -56,7 +159,7 @@ option { background: #0d1f4f; color: var(--ink); }
 }
 .nav::before {
   content: ""; position: absolute; inset: 0; z-index: -1;
-  background: rgba(8, 20, 54, 0.55); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+  background: var(--nav-glass); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
 }
 .brand { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 0; color: var(--ink); }
 .brand svg { width: 34px; height: 34px; filter: drop-shadow(0 0 8px rgba(143, 189, 240, 0.45)); }
@@ -306,6 +409,22 @@ textarea:focus, .textin:focus { border-color: rgba(247, 214, 90, 0.55); backgrou
 .verse sup { color: var(--swirl); font-weight: 700; }
 .verse.focus { background: var(--star-soft); border-radius: 12px; }
 .verse.known sup { color: var(--star); }
+.verse-body { min-width: 0; }
+.verse-line { display: flex; align-items: flex-start; gap: 8px; }
+.verse-line p { flex: 1; margin: 0; }
+.verse-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.verse-head h2 { flex: 1; min-width: 0; }
+.ear-btn {
+  flex: none; width: 40px; height: 40px; padding: 0; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--fill); color: var(--ink); display: inline-grid; place-items: center;
+  transition: background-color 0.2s, color 0.2s, transform 0.12s;
+}
+.ear-btn svg { width: 20px; height: 20px; }
+.ear-btn:hover { background: var(--fill-hover); color: var(--star); }
+.ear-btn:active { transform: scale(0.96); }
+.ear-btn.loading { opacity: 0.55; pointer-events: none; }
+.study-actions { margin-top: 14px; }
+.study-actions .btn.gold { min-width: 120px; }
 .ch-jumps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .ch-jumps button { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--fill); }
 .ch-jumps button:hover { background: var(--fill-hover); }
@@ -328,7 +447,7 @@ textarea:focus, .textin:focus { border-color: rgba(247, 214, 90, 0.55); backgrou
 .post header strong { display: block; }
 .post header span, .post header em { color: var(--faint); font-size: 12px; font-style: normal; }
 .post .body { white-space: pre-wrap; line-height: 1.65; font-size: 16px; margin: 12px 0; }
-.quote { background: var(--star-soft); border: 1px solid rgba(247, 214, 90, 0.18); border-radius: 14px; padding: 12px; color: #f6edd2; line-height: 1.55; }
+.quote { background: var(--star-soft); border: 1px solid rgba(247, 214, 90, 0.18); border-radius: 14px; padding: 12px; color: var(--ink); line-height: 1.55; }
 .quote b { display: block; font-size: 12px; margin-bottom: 4px; color: var(--star); }
 .post footer { display: flex; justify-content: space-between; align-items: center; }
 .amen { background: none; border: 0; color: var(--muted); padding: 6px 0; }
@@ -440,7 +559,7 @@ textarea:focus, .textin:focus { border-color: rgba(247, 214, 90, 0.55); backgrou
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
     display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; flex: none;
     padding: 6px max(6px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
-    background: rgba(8, 20, 54, 0.62); border-top: 1px solid var(--line);
+    background: var(--nav-mobile); border-top: 1px solid var(--line);
     backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
   }
   .links button {
