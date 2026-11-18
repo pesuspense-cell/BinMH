@@ -1,11 +1,12 @@
 (function () {
-  if (!window.REVELATION || !window.LampEngine || !window.LampAdventure) {
+  if (!window.REVELATION || !window.LampEngine || !window.LampAdventure || !window.LampGames) {
     document.getElementById("app").innerHTML = "<main><p>본문을 불러오지 못했습니다.</p></main>";
     return;
   }
 
   const E = window.LampEngine;
   const A = window.LampAdventure;
+  const G = window.LampGames;
   const B = window.LampBible;
   const S = window.LampSync;
   const list = E.flatten(window.REVELATION);
@@ -51,8 +52,18 @@
     syncEmail: "",
     syncNote: "",
     syncKey: "",
-    adventureWalk: null
+    adventureWalk: null,
+    game: null
   };
+
+  function gameCtx() {
+    return {
+      E,
+      list,
+      cards: state.cards,
+      addXp: (n) => { addXp(n); }
+    };
+  }
 
   let state = load();
 
@@ -1191,6 +1202,7 @@
     clearTimerFn();
     stopSpeaking();
     if (page !== "session" && ui.session && ui.session.phase === "done") ui.session = null;
+    if (page !== "games") ui.game = null;
     ui.page = page;
     render();
   }
@@ -2158,6 +2170,7 @@
     const pages = [
       ["home", "오늘", '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'],
       ["practice", "암송", '<path d="M3 5.5C5.5 4 8.5 4 12 6c3.5-2 6.5-2 9-.5V19c-2.5-1.5-5.5-1.5-9 .5-3.5-2-6.5-2-9-.5z"/><path d="M12 6v13.5"/>'],
+      ["games", "놀이", '<path d="M6 9h12v6H6z"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><path d="M4 12h2M18 12h2M12 7v2M12 15v2"/>'],
       ["review", "복습", '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>'],
       ["chapters", "장", '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>'],
       ["journal", "일기", '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'],
@@ -2211,6 +2224,7 @@
       '<div data-adv-slot>' + adventureMapHtml({ animate: !!ui.adventureWalk }) + "</div>" +
       (atEnd ? '<p class="lede" style="margin-top:12px">어린양이 보좌에 계시니, 계시록의 길을 다 걸었습니다.</p>' : '<p class="muted" style="margin-top:10px">오늘 암송 몫을 채우면 한 칸 앞으로 갑니다.</p>') +
       "</article>" +
+      '<article class="card" style="margin-bottom:16px"><div class="stats-head"><div><p class="eyebrow">암송 놀이</p><h3>슬레이 · 오토체스 · 카드</h3></div><button class="btn" type="button" data-act="nav" data-page="games">놀이 열기</button></div><p class="muted">외운 구절로 싸우고 배치하고 콤보를 만듭니다.</p></article>' +
       '<div class="grid-2"><article class="card"><h3>오늘의 기도</h3><div class="prayer-row">' + prayerButtons() + '</div><p class="muted">세 번을 채운 날 ' + prayerStreak() + '일</p>' + weekDots() + '</article>' +
       '<article class="card pick"><p class="eyebrow">오늘 마음에 둘 구절</p>' + (pick ? '<p class="faint">' + esc(refText(pick.id)) + (E.MARKS[pick.id] ? " · " + esc(E.MARKS[pick.id]) : "") + '</p><blockquote>「' + esc(pick.text) + '」</blockquote><p class="why">' + esc(pickReason) + '</p><button class="btn" type="button" data-act="open-pick">' + ((state.cards[pick.id]?.stage || 0) >= 3 ? "이 절 확인하기" : "오늘의 암송에서 만나기") + "</button>" : "") + "</article></div>" +
       '<article class="card"><h3>켜진 등잔</h3><div class="lamps">' + lampsHtml() + '</div><p>' + known + " / " + list.length + "절 · 새긴 글자 " + letters.toLocaleString("ko-KR") + '</p><div class="meter"><span style="--w:' + (known / list.length * 100) + '%"></span></div><div class="stones">' + stonesHtml() + '</div><div class="xpbar" style="margin-top:14px"><span style="--w:' + (info.into / info.span * 100) + '%"></span></div><p class="faint">Lv.' + info.level + " " + esc(info.title) + " · 오늘 " + day().xp + "점</p></article>" +
@@ -2322,7 +2336,12 @@
       '<article class="card adventure-card" style="margin-bottom:16px"><p class="eyebrow">천국의 길</p><div data-adv-slot>' + adventureMapHtml({}) + "</div></article>" +
       '<article class="card"><h3>오늘 만날 절</h3>' + (upcoming.length ? upcoming.map((verse) => '<p class="list-verse"><b>' + esc(refText(verse.id)) + "</b> " + esc(E.words(verse.text).slice(0, 8).join(" ")) + "…</p>").join("") : '<p class="muted">새로 열 절이 없습니다.</p>') +
       '<p><button class="btn gold" type="button" data-act="start-daily">' + (ui.session && ui.session.phase !== "done" ? "이어하기" : "시작") + "</button></p></article>" +
+      '<article class="card" style="margin-top:16px"><h3>암송 놀이</h3><p class="muted">슬레이 · 오토체스 · 카드 로그로 외운 구절을 놀아 봅니다.</p><p><button class="btn" type="button" data-act="nav" data-page="games">미니게임 열기</button></p></article>' +
       '<article class="card" style="margin-top:16px"><h3>왜 이 순서인가요</h3><div class="methods">' + methods.map((item) => "<div><b>" + item[0] + "</b><p><strong>" + item[1] + "</strong><br><span class=\"muted\">" + item[2] + "</span></p></div>").join("") + "</div></article>";
+  }
+
+  function gamesHtml() {
+    return G.html(ui.game);
   }
 
   function reviewHtml() {
@@ -2723,6 +2742,7 @@
     if (!state.name) body = welcomeHtml();
     else if (ui.page === "session") body = sessionHtml();
     else if (ui.page === "practice") body = practiceHtml();
+    else if (ui.page === "games") body = gamesHtml();
     else if (ui.page === "review") body = reviewHtml();
     else if (ui.page === "chapters") body = chaptersHtml();
     else if (ui.page === "read") body = readHtml();
@@ -2750,6 +2770,36 @@
     if (el.closest("form") && el.type === "submit") return;
     const act = el.dataset.act;
     if (act === "nav") return go(el.dataset.page);
+    if (act === "game-start") {
+      ui.game = G.start(el.dataset.game, gameCtx());
+      ui.page = "games";
+      render();
+      return;
+    }
+    if (act === "game-back") {
+      ui.game = null;
+      ui.page = "games";
+      render();
+      return;
+    }
+    if (act === "game-retry" && ui.game) {
+      ui.game = G.start(ui.game.kind, gameCtx());
+      render();
+      return;
+    }
+    if (act === "spire-enter" || act === "spire-answer" || act === "spire-relic" ||
+        act === "chess-place" || act === "chess-unplace" || act === "chess-fight" ||
+        act === "cards-play") {
+      if (!ui.game) return;
+      ui.game = G.act(ui.game, act, {
+        choice: el.dataset.choice,
+        id: el.dataset.id,
+        index: el.dataset.index,
+        word: el.dataset.word
+      }, gameCtx());
+      render();
+      return;
+    }
     if (act === "start-daily") return startDaily();
     if (act === "pray") return togglePrayer(el.dataset.slot);
     if (act === "pray-jump") {
