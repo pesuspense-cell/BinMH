@@ -33,6 +33,9 @@
   --scripture-weight: 520;
   --scripture-leading: 1.85;
   --btn-weight: 600;
+  --cta: #f7d65a;
+  --cta-top: #fbe27c;
+  --cta-ink: #1d1704;
   --blur: blur(22px) saturate(165%);
   --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 18px 48px rgba(2, 6, 26, 0.38);
   --radius: 24px;
@@ -42,113 +45,146 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* Morning — Wheat Field with Cypresses feel */
+/* Morning — Wheat Field with Cypresses (vivid Van Gogh, family with evening) */
 html[data-theme="morning"] {
   color-scheme: light;
-  --sky: #cfe3ef;
-  --ink: #14241c;
-  --muted: rgba(20, 36, 28, 0.78);
-  --faint: rgba(20, 36, 28, 0.55);
-  --line: rgba(27, 61, 42, 0.16);
-  --line-strong: rgba(27, 61, 42, 0.28);
-  --glass: rgba(255, 251, 241, 0.94);
-  --glass-strong: rgba(255, 249, 236, 0.98);
-  --fill: rgba(201, 148, 48, 0.12);
-  --fill-hover: rgba(201, 148, 48, 0.2);
-  --fill-on: rgba(27, 77, 62, 0.12);
-  --star: #b4791f;
-  --star-soft: rgba(201, 148, 48, 0.18);
-  --ochre: #c48424;
-  --swirl: #3f6f96;
-  --swirl-soft: rgba(63, 111, 150, 0.14);
-  --ember: #b86a32;
-  --good: #246846;
-  --good-soft: rgba(36, 104, 70, 0.12);
-  --bad: #a03d4d;
-  --bad-soft: rgba(160, 61, 77, 0.12);
-  --on-star: #1a1204;
-  --nav-glass: rgba(255, 251, 241, 0.9);
-  --nav-mobile: rgba(255, 251, 241, 0.96);
-  --paper: linear-gradient(165deg, #fff8e8, #f7ecd2);
-  --paper-line: rgba(180, 130, 40, 0.28);
-  --scripture: #132219;
+  --sky: #8ec8de;
+  --ink: #10241c;
+  --muted: rgba(16, 36, 28, 0.76);
+  --faint: rgba(16, 36, 28, 0.52);
+  --line: rgba(20, 64, 48, 0.14);
+  --line-strong: rgba(20, 64, 48, 0.26);
+  --glass: rgba(255, 252, 244, 0.9);
+  --glass-strong: rgba(255, 251, 240, 0.96);
+  --fill: rgba(31, 90, 68, 0.08);
+  --fill-hover: rgba(31, 90, 68, 0.14);
+  --fill-on: rgba(31, 90, 68, 0.16);
+  /* shared luminous star with evening — not muddy ochre */
+  --star: #f7d65a;
+  --star-soft: rgba(247, 214, 90, 0.22);
+  --ochre: #e9a23b;
+  --swirl: #4a8fb8;
+  --swirl-soft: rgba(74, 143, 184, 0.18);
+  --ember: #e8a06a;
+  --good: #1f5a44;
+  --good-soft: rgba(31, 90, 68, 0.14);
+  --bad: #c45a6c;
+  --bad-soft: rgba(196, 90, 108, 0.14);
+  --on-star: #10241c;
+  --cta: #1b4d3a;
+  --cta-top: #2a6b52;
+  --cta-ink: #f7f3e8;
+  --nav-glass: rgba(255, 252, 244, 0.82);
+  --nav-mobile: rgba(255, 252, 244, 0.92);
+  --paper: linear-gradient(165deg, #ffffff 0%, #fff9e8 48%, #fff1c9 100%);
+  --paper-line: rgba(27, 77, 62, 0.18);
+  --scripture: #0f2219;
   --scripture-size: 1.62rem;
-  --scripture-weight: 580;
+  --scripture-weight: 560;
   --scripture-leading: 1.9;
   --btn-weight: 650;
-  --veil: linear-gradient(180deg, rgba(180, 214, 228, 0.18), rgba(236, 204, 110, 0.14) 55%, rgba(120, 138, 78, 0.22));
+  --veil: linear-gradient(180deg, rgba(94, 180, 214, 0.05), rgba(255, 230, 100, 0.08) 55%, rgba(27, 77, 62, 0.12));
   --scene: none;
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.7), 0 14px 36px rgba(70, 55, 18, 0.14);
-  --blur: blur(14px) saturate(120%);
+  --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 16px 40px rgba(40, 70, 50, 0.18);
+  --blur: blur(18px) saturate(150%);
 }
 
 html[data-theme="morning"] body::before {
   background:
-    radial-gradient(880px 400px at 78% 10%, rgba(255, 255, 255, 0.55), transparent 64%),
-    radial-gradient(680px 360px at 16% 16%, rgba(186, 224, 234, 0.42), transparent 70%),
-    linear-gradient(180deg, #a9d2e4 0%, #cfe0ea 30%, #e8c96a 70%, #bf9a42 100%),
+    /* swirling sky clouds — brighter, cooler */
+    radial-gradient(460px 280px at 16% 6%, #ffffff 0%, rgba(255, 255, 255, 0) 58%),
+    radial-gradient(400px 240px at 42% 2%, #f4fcff 0%, rgba(244, 252, 255, 0) 55%),
+    radial-gradient(560px 300px at 76% 10%, #c8ebf8 0%, rgba(200, 235, 248, 0) 60%),
+    radial-gradient(340px 220px at 58% 20%, rgba(255, 255, 255, 0.75), transparent 52%),
+    /* golden wheat field — vivid, not muddy */
+    radial-gradient(980px 460px at 38% 90%, #ffe14a 0%, rgba(255, 225, 74, 0) 56%),
+    radial-gradient(760px 400px at 72% 96%, #f0b429 0%, rgba(240, 180, 41, 0) 52%),
+    radial-gradient(640px 280px at 20% 78%, #ffd34d 0%, rgba(255, 211, 77, 0) 60%),
+    /* deep cypress mass */
+    radial-gradient(300px 680px at 93% 55%, #163c30 0%, rgba(22, 60, 48, 0) 58%),
+    radial-gradient(180px 460px at 87% 38%, #1b4d3a 0%, rgba(27, 77, 62, 0) 60%),
+    /* mountain cool mid */
+    radial-gradient(680px 300px at 28% 46%, rgba(130, 164, 210, 0.45), transparent 68%),
+    linear-gradient(180deg, #5eb4d6 0%, #8ecce4 18%, #c5e8f5 32%, #ffe56a 58%, #f0c43a 74%, #e0a828 100%),
     var(--sky);
 }
 
 html[data-theme="morning"] body::after {
   background:
-    linear-gradient(115deg, transparent 62%, rgba(27, 77, 62, 0.18) 78%, rgba(20, 58, 46, 0.34) 100%),
+    repeating-linear-gradient(-18deg, transparent 0 16px, rgba(255, 230, 90, 0.07) 16px 17px),
+    linear-gradient(118deg, transparent 60%, rgba(22, 60, 48, 0.22) 78%, rgba(14, 48, 36, 0.4) 100%),
     var(--veil);
 }
 
-/* Day — Almond Blossom feel */
+/* Day — Almond Blossom (vivid turquoise + cream blossoms) */
 html[data-theme="day"] {
   color-scheme: light;
-  --sky: #4ea6b6;
-  --ink: #1a2420;
-  --muted: rgba(26, 36, 32, 0.78);
-  --faint: rgba(26, 36, 32, 0.54);
-  --line: rgba(36, 52, 44, 0.16);
-  --line-strong: rgba(36, 52, 44, 0.28);
-  --glass: rgba(255, 253, 248, 0.95);
-  --glass-strong: rgba(255, 252, 246, 0.98);
-  --fill: rgba(36, 52, 44, 0.06);
-  --fill-hover: rgba(36, 52, 44, 0.1);
-  --fill-on: rgba(36, 52, 44, 0.12);
-  --star: #a67c12;
-  --star-soft: rgba(166, 124, 18, 0.14);
-  --ochre: #9a7318;
-  --swirl: #246e7c;
-  --swirl-soft: rgba(36, 110, 124, 0.12);
-  --ember: #c27a6a;
-  --good: #2f6842;
-  --good-soft: rgba(47, 104, 66, 0.12);
-  --bad: #9e3f4e;
-  --bad-soft: rgba(158, 63, 78, 0.12);
-  --on-star: #1a1204;
-  --nav-glass: rgba(255, 253, 248, 0.9);
-  --nav-mobile: rgba(255, 253, 248, 0.96);
-  --paper: linear-gradient(165deg, #fffcf7, #f4f0e6);
-  --paper-line: rgba(60, 90, 78, 0.18);
-  --scripture: #15231e;
+  --sky: #2f9eb0;
+  --ink: #1a2c28;
+  --muted: rgba(26, 44, 40, 0.76);
+  --faint: rgba(26, 44, 40, 0.52);
+  --line: rgba(30, 70, 64, 0.14);
+  --line-strong: rgba(30, 70, 64, 0.26);
+  --glass: rgba(255, 253, 248, 0.9);
+  --glass-strong: rgba(255, 252, 246, 0.96);
+  --fill: rgba(30, 90, 96, 0.08);
+  --fill-hover: rgba(30, 90, 96, 0.14);
+  --fill-on: rgba(30, 90, 96, 0.16);
+  --star: #f7d65a;
+  --star-soft: rgba(247, 214, 90, 0.2);
+  --ochre: #e9a23b;
+  --swirl: #1f7f90;
+  --swirl-soft: rgba(31, 127, 144, 0.16);
+  --ember: #e0a090;
+  --good: #2d6b48;
+  --good-soft: rgba(45, 107, 72, 0.14);
+  --bad: #c45a6c;
+  --bad-soft: rgba(196, 90, 108, 0.14);
+  --on-star: #1a2c28;
+  --cta: #1e4a52;
+  --cta-top: #2a6470;
+  --cta-ink: #f7f3e8;
+  --nav-glass: rgba(255, 253, 248, 0.82);
+  --nav-mobile: rgba(255, 253, 248, 0.92);
+  --paper: linear-gradient(165deg, #ffffff 0%, #fff9ef 50%, #f7efe0 100%);
+  --paper-line: rgba(30, 90, 96, 0.16);
+  --scripture: #152824;
   --scripture-size: 1.62rem;
-  --scripture-weight: 580;
+  --scripture-weight: 560;
   --scripture-leading: 1.9;
   --btn-weight: 650;
-  --veil: linear-gradient(180deg, rgba(62, 160, 176, 0.1), rgba(255, 252, 246, 0.28) 58%, rgba(48, 72, 58, 0.14));
+  --veil: linear-gradient(180deg, rgba(40, 160, 180, 0.06), rgba(255, 252, 246, 0.2) 55%, rgba(40, 70, 55, 0.12));
   --scene: none;
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.75), 0 14px 36px rgba(24, 58, 68, 0.16);
-  --blur: blur(14px) saturate(120%);
+  --shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 16px 40px rgba(20, 70, 80, 0.18);
+  --blur: blur(18px) saturate(140%);
 }
 
 html[data-theme="day"] body::before {
   background:
-    radial-gradient(circle at 18% 22%, rgba(255, 252, 246, 0.72) 0 0.9%, transparent 1.5%),
-    radial-gradient(circle at 42% 28%, rgba(255, 252, 246, 0.68) 0 1%, transparent 1.7%),
-    radial-gradient(circle at 72% 30%, rgba(255, 245, 236, 0.62) 0 0.8%, transparent 1.4%),
-    radial-gradient(980px 520px at 50% -10%, rgba(255, 252, 246, 0.22), transparent 62%),
-    linear-gradient(165deg, #3f9aab 0%, #57b4c4 45%, #72c2cf 100%),
+    /* cream blossoms — brighter pops */
+    radial-gradient(circle at 14% 18%, #fffdf8 0 1.5%, transparent 2.4%),
+    radial-gradient(circle at 22% 28%, #fff4e8 0 1.2%, transparent 2%),
+    radial-gradient(circle at 34% 14%, #ffffff 0 1.7%, transparent 2.6%),
+    radial-gradient(circle at 46% 24%, #ffe8d8 0 1.3%, transparent 2.1%),
+    radial-gradient(circle at 58% 12%, #fffdf8 0 1.4%, transparent 2.3%),
+    radial-gradient(circle at 68% 30%, #fff5ec 0 1.1%, transparent 1.9%),
+    radial-gradient(circle at 78% 16%, #ffffff 0 1.6%, transparent 2.5%),
+    radial-gradient(circle at 88% 26%, #ffe9da 0 1.2%, transparent 2%),
+    radial-gradient(circle at 30% 42%, #fffdf8 0 1.3%, transparent 2.1%),
+    radial-gradient(circle at 72% 48%, #fff5ec 0 1.1%, transparent 1.9%),
+    radial-gradient(circle at 50% 20%, #fff8ef 0 1%, transparent 1.8%),
+    /* branch shadows */
+    radial-gradient(520px 180px at 20% 60%, rgba(42, 58, 40, 0.28), transparent 70%),
+    radial-gradient(480px 160px at 70% 55%, rgba(42, 58, 40, 0.22), transparent 68%),
+    /* luminous turquoise sky — more saturated */
+    radial-gradient(900px 500px at 50% -8%, rgba(160, 236, 248, 0.55), transparent 58%),
+    linear-gradient(165deg, #1490a8 0%, #20adc2 36%, #3bc0d2 68%, #52cad8 100%),
     var(--sky);
 }
 
 html[data-theme="day"] body::after {
   background:
-    linear-gradient(125deg, transparent 48%, rgba(58, 72, 42, 0.08) 68%, rgba(42, 52, 32, 0.14) 100%),
+    linear-gradient(130deg, transparent 42%, rgba(42, 58, 40, 0.1) 62%, rgba(30, 44, 32, 0.18) 100%),
     var(--veil);
 }
 
@@ -164,7 +200,7 @@ button { cursor: pointer; }
 ::placeholder { color: var(--faint); }
 option { background: var(--glass-strong); color: var(--ink); }
 html[data-theme="morning"] option,
-html[data-theme="day"] option { background: #fffaf0; }
+html[data-theme="day"] option { background: #fffdf6; }
 
 .nav {
   position: sticky;
@@ -221,17 +257,42 @@ html[data-theme="day"] option { background: #fffaf0; }
   box-shadow: 0 6px 22px rgba(247, 214, 90, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 .btn.gold:hover { background: linear-gradient(180deg, #fde68c, #f9da66 55%, #f0c94e); }
+/* Light themes: deep painting accents (cypress / branch teal), not muddy ochre */
 html[data-theme="morning"] .btn.gold,
 html[data-theme="day"] .btn.gold {
-  background: linear-gradient(180deg, #efd27a, var(--star) 52%, var(--ochre));
-  box-shadow: 0 4px 16px rgba(140, 100, 20, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  background: linear-gradient(180deg, var(--cta-top), var(--cta));
+  color: var(--cta-ink);
+  border-color: transparent;
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--cta) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+html[data-theme="morning"] .btn.gold:hover,
+html[data-theme="day"] .btn.gold:hover {
+  filter: brightness(1.06);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cta-top) 80%, white), var(--cta-top));
 }
 html[data-theme="morning"] .btn.ghost,
 html[data-theme="day"] .btn.ghost {
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.62);
   border-color: var(--line-strong);
   color: var(--ink);
   font-weight: 600;
+}
+html[data-theme="morning"] .streak,
+html[data-theme="day"] .streak {
+  color: var(--cta);
+  text-shadow: none;
+}
+html[data-theme="morning"] .ch-jumps button.on,
+html[data-theme="day"] .ch-jumps button.on {
+  background: var(--cta);
+  color: var(--cta-ink);
+  border-color: var(--cta);
+}
+html[data-theme="morning"] .links button.active,
+html[data-theme="day"] .links button.active {
+  color: var(--cta);
+  background: color-mix(in srgb, var(--cta) 12%, transparent);
+  font-weight: 700;
 }
 .btn.ghost { background: transparent; }
 .btn.ghost:hover { background: var(--fill); }
@@ -285,7 +346,9 @@ html[data-theme="morning"] .modal,
 html[data-theme="day"] .hero,
 html[data-theme="day"] .card,
 html[data-theme="day"] .modal {
-  backdrop-filter: none; -webkit-backdrop-filter: none;
+  /* keep a light glass kinship with evening, but opaque enough for focus */
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
 }
 .hero {
   display: flex; justify-content: space-between; align-items: center; gap: 24px;
@@ -297,14 +360,14 @@ html[data-theme="day"] .modal {
 }
 html[data-theme="morning"] .hero {
   background:
-    radial-gradient(320px 180px at 100% 0%, rgba(201, 148, 48, 0.14), transparent 65%),
-    radial-gradient(380px 200px at 0% 100%, rgba(95, 143, 184, 0.1), transparent 70%),
+    radial-gradient(320px 180px at 100% 0%, rgba(247, 214, 90, 0.22), transparent 65%),
+    radial-gradient(380px 200px at 0% 100%, rgba(74, 143, 184, 0.16), transparent 70%),
     var(--glass);
 }
 html[data-theme="day"] .hero {
   background:
-    radial-gradient(320px 180px at 100% 0%, rgba(166, 124, 18, 0.1), transparent 65%),
-    radial-gradient(380px 200px at 0% 100%, rgba(36, 110, 124, 0.08), transparent 70%),
+    radial-gradient(320px 180px at 100% 0%, rgba(255, 252, 246, 0.55), transparent 65%),
+    radial-gradient(380px 200px at 0% 100%, rgba(31, 127, 144, 0.12), transparent 70%),
     var(--glass);
 }
 .hero h2 { font-size: 32px; margin-bottom: 6px; }
@@ -319,12 +382,16 @@ html[data-theme="day"] .hero {
 }
 .slot:hover { background: var(--fill-hover); }
 .slot.on { background: var(--good-soft); border-color: rgba(130, 227, 171, 0.45); color: var(--good); font-weight: 700; }
-.slot.now:not(.on) { border-color: rgba(247, 214, 90, 0.55); }
+.slot.now:not(.on) { border-color: color-mix(in srgb, var(--cta, var(--star)) 55%, transparent); }
+html[data-theme="evening"] .slot.now:not(.on),
+:root:not([data-theme]) .slot.now:not(.on) { border-color: rgba(247, 214, 90, 0.55); }
 .slot small { display: block; color: var(--faint); font-weight: 500; margin-top: 4px; }
 .weekdots { display: flex; gap: 8px; margin-top: 16px; }
 .weekdots span { display: flex; flex-direction: column; gap: 4px; align-items: center; }
 .weekdots i { width: 8px; height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 16%, transparent); display: block; }
-.weekdots i.on { background: var(--star); box-shadow: 0 0 8px rgba(247, 214, 90, 0.7); }
+.weekdots i.on { background: var(--star); box-shadow: 0 0 8px color-mix(in srgb, var(--star) 70%, transparent); }
+html[data-theme="morning"] .weekdots i.on,
+html[data-theme="day"] .weekdots i.on { background: var(--cta); box-shadow: 0 0 8px color-mix(in srgb, var(--cta) 45%, transparent); }
 .weekdots em { font-style: normal; font-size: 10px; color: var(--faint); }
 
 .pick blockquote {

@@ -22,7 +22,7 @@
     spot: "이미 외운 장에서 흔들리기 쉬운 절을 골라 다시 꺼냅니다."
   };
 
-  const THEME_COLORS = { morning: "#c9a24a", day: "#4aa8b8", evening: "#0b1c45" };
+  const THEME_COLORS = { morning: "#7ebdd8", day: "#2f9eb0", evening: "#0b1c45" };
 
   let timer = 0;
   let stamp = "";
