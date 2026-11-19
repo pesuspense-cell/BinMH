@@ -2846,7 +2846,7 @@
       render();
       return;
     }
-    if (act === "spire-enter" || act === "spire-answer" || act === "spire-relic" ||
+    if (act === "spire-enter" || act === "spire-answer" ||
         act === "cards-play" || act === "cards-continue") {
       if (!ui.game) return;
       ui.game = G.act(ui.game, act, {
