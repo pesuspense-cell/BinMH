@@ -191,43 +191,66 @@ BB.load().then(() => {
   assert(lobby.includes("미니게임 두 가지"), "lobby two games");
   assert(lobby.includes("계시록 슬레이") && lobby.includes("성경전서 카드 로그"), "lobby titles");
   assert(!lobby.includes("오토체스") && !lobby.includes('data-game="chess"'), "chess removed");
+  assert(!lobby.includes("유물"), "lobby no relics");
 
   const cards = G.start("cards", ctx);
   assert(cards.kind === "cards" && cards.hint && /힌트/.test(cards.hint), "cards hint");
   assert(cards.verseText && cards.seenVerseIds.length === 1, "cards tracks seen");
   const firstCardId = cards.verseId;
-  cards.correct.forEach((word) => { G.act(cards, "cards-play", { word }, ctx); });
-  if (!cards.over) {
-    assert(cards.phase === "reveal" && cards.revealPending === "next", "cards reveal after hand");
-    G.act(cards, "cards-continue", {}, ctx);
-    assert(cards.verseId !== firstCardId, "cards no duplicate next verse");
-    assert(cards.seenVerseIds.indexOf(firstCardId) >= 0, "cards keeps first seen");
-  } else {
-    assert(cards.phase === "reveal" && cards.verseText, "cards reveal on win/lose");
-  }
+  const wrongHand = cards.correct.slice().reverse();
+  if (wrongHand.join("|") === cards.correct.join("|")) wrongHand.push(wrongHand.shift());
+  wrongHand.forEach((word) => { G.act(cards, "cards-play", { word }, ctx); });
+  assert(!cards.over, "cards not soft-locked after wrong hand");
+  assert(cards.phase === "play" && cards.played.length === 0 && cards.hand.length === cards.correct.length, "cards reclaim after wrong hand");
+  assert(cards.verseId === firstCardId, "cards same verse after reclaim");
+
+  const cardsWin = G.start("cards", ctx);
+  cardsWin.enemy = 3;
+  cardsWin.maxEnemy = 3;
+  cardsWin.correct.forEach((word) => { G.act(cardsWin, "cards-play", { word }, ctx); });
+  assert(cardsWin.over && cardsWin.won && cardsWin.phase === "reveal" && cardsWin.verseText, "cards reveal on win");
 
   const spire = G.start("spire", ctx);
+  assert(spire.nodes.every((n) => n.type !== "relic") && !("relics" in spire), "spire no relic nodes");
   G.act(spire, "spire-enter", {}, ctx);
   assert(spire.phase === "battle" && spire.battle && spire.seenVerseIds.length >= 1, "spire battle seen");
+  const budget = G.problemBudget(spire.nodes[spire.cursor]);
+  assert(spire.battle.enemyHp === budget && spire.battle.maxEnemyHp === budget, "spire HP matches problem budget");
   const v1 = G.verseKey(spire.battle.verse);
-  spire.battle.enemyHp = 1;
+  const chapters = new Set([spire.battle.verse.chapter]);
+  // Answer one blank: HP drops by 1 and next problem uses a different verse.
   const ans = spire.battle.mode === "multi" ? spire.battle.pending[0] : spire.battle.answer;
+  const hpBefore = spire.battle.enemyHp;
   G.act(spire, "spire-answer", { choice: ans }, ctx);
   if (spire.phase === "battle" && spire.battle) {
-    assert(G.verseKey(spire.battle.verse) === v1, "spire same verse while enemy alive");
+    if (spire.battle.mode === "multi" && spire.battle.pending && spire.battle.pending.length) {
+      assert(spire.battle.enemyHp === hpBefore - 1, "spire multi blank deals 1 HP");
+      assert(G.verseKey(spire.battle.verse) === v1, "spire same verse until multi blanks done");
+    } else {
+      assert(spire.battle.enemyHp === hpBefore - 1 || spire.battle.enemyHp === budget - 1, "spire single deals 1 HP");
+      assert(G.verseKey(spire.battle.verse) !== v1, "spire next problem different verse within stage");
+      chapters.add(spire.battle.verse.chapter);
+    }
   }
   if (spire.phase === "map" && !spire.over) {
-    while (spire.cursor < spire.nodes.length && spire.nodes[spire.cursor].type === "relic") {
-      G.act(spire, "spire-enter", {}, ctx);
-      G.act(spire, "spire-relic", { id: spire.relicChoices[0].id }, ctx);
-    }
-    if (!spire.over && spire.nodes[spire.cursor] && spire.nodes[spire.cursor].type !== "relic") {
-      G.act(spire, "spire-enter", {}, ctx);
-      if (spire.battle) {
-        assert(G.verseKey(spire.battle.verse) !== v1, "spire new node different verse");
-      }
+    G.act(spire, "spire-enter", {}, ctx);
+    if (spire.battle) {
+      assert(G.verseKey(spire.battle.verse) !== v1, "spire new node different verse");
+      chapters.add(spire.battle.verse.chapter);
     }
   }
+  // Variety: successive picks across a climb should reach more than one chapter when pool is full Revelation.
+  const variety = G.start("spire", ctx);
+  const seenCh = new Set();
+  for (let i = 0; i < 6; i++) {
+    variety.cursor = 1;
+    variety.stageSeenVerseIds = [];
+    variety.usedFills = [];
+    G.act(variety, "spire-enter", {}, ctx);
+    if (variety.battle && variety.battle.verse) seenCh.add(variety.battle.verse.chapter);
+    variety.nodes[1].done = false;
+  }
+  assert(seenCh.size >= 2, "spire draws from multiple Revelation chapters");
 
   console.log("selfcheck ok", list.length, "daily", daily.map((q) => q.kind).join(","), "bible", whole.flat(2).length);
 }).catch((err) => { console.error(err); process.exit(1); });
