@@ -170,5 +170,64 @@ BB.load().then(() => {
   assert(BB.search("독생자").total === 5, "search 독생자");
   assert(BB.search("여호와는 나의 목자").hits[0].book === 19, "search phrase");
   assert(BB.search("요한복음 사랑").hits.every((hit) => hit.book === 43), "search within book");
+
+  const gameBox = {};
+  vm.createContext(gameBox);
+  gameBox.LampEngine = E;
+  vm.runInContext(fs.readFileSync("./src/games.js", "utf8"), gameBox);
+  const G = gameBox.LampGames;
+  const bibleList = BB.sampleVerses(40, 17);
+  const progress = { spireFloor: 1, cardsIndex: 0, spireWins: 0, cardsWins: 0 };
+  const ctx = {
+    E,
+    list,
+    bibleList,
+    cards: {},
+    progress,
+    setProgress: (next) => Object.assign(progress, next || {}),
+    addXp: () => {}
+  };
+  const lobby = G.lobbyHtml(ctx);
+  assert(lobby.includes("미니게임 두 가지"), "lobby two games");
+  assert(lobby.includes("계시록 슬레이") && lobby.includes("성경전서 카드 로그"), "lobby titles");
+  assert(!lobby.includes("오토체스") && !lobby.includes('data-game="chess"'), "chess removed");
+
+  const cards = G.start("cards", ctx);
+  assert(cards.kind === "cards" && cards.hint && /힌트/.test(cards.hint), "cards hint");
+  assert(cards.verseText && cards.seenVerseIds.length === 1, "cards tracks seen");
+  const firstCardId = cards.verseId;
+  cards.correct.forEach((word) => { G.act(cards, "cards-play", { word }, ctx); });
+  if (!cards.over) {
+    assert(cards.phase === "reveal" && cards.revealPending === "next", "cards reveal after hand");
+    G.act(cards, "cards-continue", {}, ctx);
+    assert(cards.verseId !== firstCardId, "cards no duplicate next verse");
+    assert(cards.seenVerseIds.indexOf(firstCardId) >= 0, "cards keeps first seen");
+  } else {
+    assert(cards.phase === "reveal" && cards.verseText, "cards reveal on win/lose");
+  }
+
+  const spire = G.start("spire", ctx);
+  G.act(spire, "spire-enter", {}, ctx);
+  assert(spire.phase === "battle" && spire.battle && spire.seenVerseIds.length >= 1, "spire battle seen");
+  const v1 = G.verseKey(spire.battle.verse);
+  spire.battle.enemyHp = 1;
+  const ans = spire.battle.mode === "multi" ? spire.battle.pending[0] : spire.battle.answer;
+  G.act(spire, "spire-answer", { choice: ans }, ctx);
+  if (spire.phase === "battle" && spire.battle) {
+    assert(G.verseKey(spire.battle.verse) === v1, "spire same verse while enemy alive");
+  }
+  if (spire.phase === "map" && !spire.over) {
+    while (spire.cursor < spire.nodes.length && spire.nodes[spire.cursor].type === "relic") {
+      G.act(spire, "spire-enter", {}, ctx);
+      G.act(spire, "spire-relic", { id: spire.relicChoices[0].id }, ctx);
+    }
+    if (!spire.over && spire.nodes[spire.cursor] && spire.nodes[spire.cursor].type !== "relic") {
+      G.act(spire, "spire-enter", {}, ctx);
+      if (spire.battle) {
+        assert(G.verseKey(spire.battle.verse) !== v1, "spire new node different verse");
+      }
+    }
+  }
+
   console.log("selfcheck ok", list.length, "daily", daily.map((q) => q.kind).join(","), "bible", whole.flat(2).length);
 }).catch((err) => { console.error(err); process.exit(1); });

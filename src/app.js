@@ -76,13 +76,13 @@
 
   function gameProgress() {
     if (!state.gameProgress || typeof state.gameProgress !== "object") {
-      state.gameProgress = { spireFloor: 1, chessWave: 1, cardsIndex: 0, spireWins: 0, chessWins: 0, cardsWins: 0 };
+      state.gameProgress = { spireFloor: 1, cardsIndex: 0, spireWins: 0, cardsWins: 0 };
     }
     const g = state.gameProgress;
-    ["spireFloor", "chessWave"].forEach((key) => {
+    ["spireFloor"].forEach((key) => {
       if (typeof g[key] !== "number" || g[key] < 1) g[key] = 1;
     });
-    ["cardsIndex", "spireWins", "chessWins", "cardsWins"].forEach((key) => {
+    ["cardsIndex", "spireWins", "cardsWins"].forEach((key) => {
       if (typeof g[key] !== "number" || g[key] < 0) g[key] = 0;
     });
     return g;
@@ -121,7 +121,7 @@
       dailyMode: "flex",
       adventureDay: 0,
       adventureAdvancedOn: "",
-      gameProgress: { spireFloor: 1, chessWave: 1, cardsIndex: 0, spireWins: 0, chessWins: 0, cardsWins: 0 }
+      gameProgress: { spireFloor: 1, cardsIndex: 0, spireWins: 0, cardsWins: 0 }
     };
   }
 
@@ -2268,7 +2268,7 @@
       '<div data-adv-slot>' + adventureMapHtml({ animate: !!ui.adventureWalk }) + "</div>" +
       (atEnd ? '<p class="lede" style="margin-top:12px">어린양이 보좌에 계시니, 계시록의 길을 다 걸었습니다.</p>' : '<p class="muted" style="margin-top:10px">오늘 암송 몫을 채우면 한 칸 앞으로 갑니다.</p>') +
       "</article>" +
-      '<article class="card" style="margin-bottom:16px"><div class="stats-head"><div><p class="eyebrow">암송 놀이</p><h3>계시록 슬레이 · 성경전서 2종</h3></div><button class="btn" type="button" data-act="nav" data-page="games">놀이 열기</button></div><p class="muted">계시록 1종 + 성경전서 오토체스·카드. 이기면 층·파장·구절이 앞으로 갑니다.</p></article>' +
+      '<article class="card" style="margin-bottom:16px"><div class="stats-head"><div><p class="eyebrow">암송 놀이</p><h3>계시록 슬레이 · 성경전서 카드</h3></div><button class="btn" type="button" data-act="nav" data-page="games">놀이 열기</button></div><p class="muted">계시록 슬레이와 성경전서 카드 로그. 이기면 Floor·구절이 앞으로 갑니다.</p></article>' +
       '<div class="grid-2"><article class="card"><h3>오늘의 기도</h3><div class="prayer-row">' + prayerButtons() + '</div><p class="muted">세 번을 채운 날 ' + prayerStreak() + '일</p>' + weekDots() + '</article>' +
       '<article class="card pick"><p class="eyebrow">오늘 마음에 둘 구절</p>' + (pick ? '<p class="faint">' + esc(refText(pick.id)) + (E.MARKS[pick.id] ? " · " + esc(E.MARKS[pick.id]) : "") + '</p><blockquote>「' + esc(pick.text) + '」</blockquote><p class="why">' + esc(pickReason) + '</p><button class="btn" type="button" data-act="open-pick">' + ((state.cards[pick.id]?.stage || 0) >= 3 ? "이 절 확인하기" : "오늘의 암송에서 만나기") + "</button>" : "") + "</article></div>" +
       '<article class="card"><h3>켜진 등잔</h3><div class="lamps">' + lampsHtml() + '</div><p>' + known + " / " + list.length + "절 · 새긴 글자 " + letters.toLocaleString("ko-KR") + '</p><div class="meter"><span style="--w:' + (known / list.length * 100) + '%"></span></div><div class="stones">' + stonesHtml() + '</div><div class="xpbar" style="margin-top:14px"><span style="--w:' + (info.into / info.span * 100) + '%"></span></div><p class="faint">Lv.' + info.level + " " + esc(info.title) + " · 오늘 " + day().xp + "점</p></article>" +
@@ -2380,7 +2380,7 @@
       '<article class="card adventure-card" style="margin-bottom:16px"><p class="eyebrow">천국의 길</p><div data-adv-slot>' + adventureMapHtml({}) + "</div></article>" +
       '<article class="card"><h3>오늘 만날 절</h3>' + (upcoming.length ? upcoming.map((verse) => '<p class="list-verse"><b>' + esc(refText(verse.id)) + "</b> " + esc(E.words(verse.text).slice(0, 8).join(" ")) + "…</p>").join("") : '<p class="muted">새로 열 절이 없습니다.</p>') +
       '<p><button class="btn gold" type="button" data-act="start-daily">' + (ui.session && ui.session.phase !== "done" ? "이어하기" : "시작") + "</button></p></article>" +
-      '<article class="card" style="margin-top:16px"><h3>암송 놀이</h3><p class="muted">계시록 슬레이와 성경전서 오토체스·카드 로그. 진행도가 저장됩니다.</p><p><button class="btn" type="button" data-act="nav" data-page="games">미니게임 열기</button></p></article>' +
+      '<article class="card" style="margin-top:16px"><h3>암송 놀이</h3><p class="muted">계시록 슬레이와 성경전서 카드 로그. 진행도가 저장됩니다.</p><p><button class="btn" type="button" data-act="nav" data-page="games">미니게임 열기</button></p></article>' +
       '<article class="card" style="margin-top:16px"><h3>왜 이 순서인가요</h3><div class="methods">' + methods.map((item) => "<div><b>" + item[0] + "</b><p><strong>" + item[1] + "</strong><br><span class=\"muted\">" + item[2] + "</span></p></div>").join("") + "</div></article>";
   }
 
@@ -2821,7 +2821,7 @@
         ui.page = "games";
         render();
       };
-      if ((kind === "chess" || kind === "cards") && !bibleGameList) {
+      if (kind === "cards" && !bibleGameList) {
         ensureBibleGames().then((ready) => {
           if (!ready) {
             ui.page = "games";
@@ -2847,8 +2847,7 @@
       return;
     }
     if (act === "spire-enter" || act === "spire-answer" || act === "spire-relic" ||
-        act === "chess-place" || act === "chess-unplace" || act === "chess-fight" ||
-        act === "cards-play") {
+        act === "cards-play" || act === "cards-continue") {
       if (!ui.game) return;
       ui.game = G.act(ui.game, act, {
         choice: el.dataset.choice,
