@@ -22,31 +22,6 @@
     { name: "흰옷", atk: 3, keys: ["흰 옷", "흰옷"] }
   ];
 
-  const BIBLE_KEYWORDS = [
-    { name: "여호와", atk: 6, keys: ["여호와"] },
-    { name: "하나님", atk: 5, keys: ["하나님"] },
-    { name: "예수", atk: 6, keys: ["예수"] },
-    { name: "그리스도", atk: 5, keys: ["그리스도"] },
-    { name: "성령", atk: 5, keys: ["성령"] },
-    { name: "믿음", atk: 4, keys: ["믿음"] },
-    { name: "사랑", atk: 4, keys: ["사랑"] },
-    { name: "말씀", atk: 4, keys: ["말씀"] },
-    { name: "복음", atk: 4, keys: ["복음"] },
-    { name: "기도", atk: 3, keys: ["기도"] },
-    { name: "평강", atk: 3, keys: ["평강"] },
-    { name: "의", atk: 3, keys: ["의"] },
-    { name: "생명", atk: 4, keys: ["생명"] },
-    { name: "빛", atk: 3, keys: ["빛"] },
-    { name: "십자가", atk: 5, keys: ["십자가"] },
-    { name: "부활", atk: 5, keys: ["부활"] },
-    { name: "은혜", atk: 4, keys: ["은혜"] },
-    { name: "천국", atk: 5, keys: ["천국"] },
-    { name: "아브라함", atk: 4, keys: ["아브라함"] },
-    { name: "다윗", atk: 4, keys: ["다윗"] },
-    { name: "모세", atk: 4, keys: ["모세"] },
-    { name: "시온", atk: 3, keys: ["시온"] }
-  ];
-
   function esc(value) {
     return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -65,7 +40,7 @@
   }
 
   function progressOf(ctx, kind) {
-    const base = { spireFloor: 1, chessWave: 1, cardsIndex: 0, spireWins: 0, chessWins: 0, cardsWins: 0 };
+    const base = { spireFloor: 1, cardsIndex: 0, spireWins: 0, cardsWins: 0 };
     const raw = (ctx && ctx.progress) || {};
     return Object.assign({}, base, raw, (raw[kind] && typeof raw[kind] === "object") ? {} : {});
   }
@@ -86,17 +61,16 @@
     return String(unit.answer || "") + particleTrail(unit.after);
   }
 
-  function knownBonus(cards, list) {
-    if (!cards || !list || !list.length) return 0;
-    const known = list.filter((v) => (cards[v.id]?.stage || 0) >= 3).length;
-    return Math.min(0.35, known / Math.max(1, list.length));
-  }
-
   function verseLabel(verse) {
     if (!verse) return "";
     if (verse.ref) return verse.ref;
     if (verse.bookName) return verse.bookName + " " + verse.chapter + ":" + verse.verse;
     return "계시록 " + verse.id;
+  }
+
+  function verseKey(verse) {
+    if (!verse) return "";
+    return String(verse.id || verse.ref || verseLabel(verse));
   }
 
   function poolFor(kind, ctx) {
@@ -117,6 +91,37 @@
     }
     const salt = seed == null ? (Date.now() % 9973) : seed;
     return shuffle(pool.slice(0, Math.max(n * 4, n)), salt).slice(0, n);
+  }
+
+  function pickUnusedVerse(list, seen, preferKnown, cards, seed) {
+    const seenSet = new Set(seen || []);
+    let unused = list.filter((v) => !seenSet.has(verseKey(v)));
+    if (!unused.length) {
+      if (seen && seen.length) seen.length = 0;
+      unused = list.slice();
+    }
+    return pickVerses(unused, 1, preferKnown, cards, seed)[0] || unused[0] || list[0] || null;
+  }
+
+  function bookChapterCue(verse) {
+    if (!verse) return "";
+    if (verse.bookName && verse.chapter != null) return verse.bookName + " " + verse.chapter + "장";
+    const label = verseLabel(verse);
+    const m = String(label).match(/^(.+?)\s+(\d+)(?::\d+)?/);
+    if (m) return m[1] + " " + m[2] + "장";
+    return label;
+  }
+
+  function cardsHint(verse, E) {
+    const cue = bookChapterCue(verse);
+    const words = E.words(verse.text || "").map((raw) =>
+      String(raw).replace(/^[“"'(\[]+|[”"'.,!?…·:;)\]]+$/g, "") || raw
+    ).filter(Boolean);
+    if (!words.length) return "힌트 · " + cue;
+    if (words.length === 1) return "힌트 · " + cue + " · 「" + words[0] + "」";
+    const first = words[0];
+    const last = words[words.length - 1];
+    return "힌트 · " + cue + " · 시작 「" + first + "」 · 끝 「" + last + "」";
   }
 
   function distractorFills(verse, E, answer, seed, count) {
@@ -260,30 +265,22 @@
     const w = E.words(verse.text).map((raw) => String(raw).replace(/^[“"'(\[]+|[”"'.,!?…·:;)\]]+$/g, "") || raw);
     const take = Math.min(5, Math.max(3, w.length));
     const correct = w.slice(0, take);
-    return { id: verse.id, ref: verseLabel(verse), correct, hand: shuffle(correct, seed) };
+    return {
+      id: verse.id,
+      ref: verseLabel(verse),
+      text: verse.text || "",
+      verse,
+      correct,
+      hand: shuffle(correct, seed),
+      hint: cardsHint(verse, E)
+    };
   }
 
-  function unitsFromMemory(list, cards, keywords) {
-    const found = [];
-    const textBlob = list.map((v) => v.text).join(" ");
-    keywords.forEach((kw) => {
-      const hit = kw.keys.some((k) => textBlob.indexOf(k) >= 0);
-      if (!hit) return;
-      const mastered = list.some((v) => (cards[v.id]?.stage || 0) >= 3 && kw.keys.some((k) => v.text.indexOf(k) >= 0));
-      found.push({
-        name: kw.name,
-        atk: kw.atk + (mastered ? 2 : 0),
-        mastered: !!mastered,
-        id: kw.name
-      });
-    });
-    if (found.length < 4) {
-      ["증인", "등잔", "별", "문", "평강", "은혜"].forEach((name, i) => {
-        if (found.length >= 6) return;
-        if (!found.some((u) => u.name === name)) found.push({ name, atk: 2 + i, mastered: false, id: name });
-      });
-    }
-    return found.slice(0, 8);
+  function rememberVerse(game, verse) {
+    const key = verseKey(verse);
+    if (!key) return;
+    game.seenVerseIds = game.seenVerseIds || [];
+    if (game.seenVerseIds.indexOf(key) < 0) game.seenVerseIds.push(key);
   }
 
   function hpBar(current, max, label) {
@@ -296,18 +293,15 @@
   function lobbyHtml(ctx) {
     const p = progressOf(ctx);
     const bibleReady = !!(ctx && ctx.bibleList && ctx.bibleList.length);
-    return '<p class="eyebrow">암송 놀이</p><h1>미니게임 세 가지</h1>' +
-      '<p class="lede">연습은 제한 없이 이어집니다. 이기면 층·파장·구절 인덱스가 앞으로 가고, 지면 같은 지점에서 다시 도전합니다.</p>' +
-      '<p class="muted">진행 · 계시록 슬레이 Floor ' + p.spireFloor + " · 성경전서 오토체스 Wave " + p.chessWave +
+    return '<p class="eyebrow">암송 놀이</p><h1>미니게임 두 가지</h1>' +
+      '<p class="lede">연습은 제한 없이 이어집니다. 이기면 Floor·구절 진행이 앞으로 가고, 지면 같은 지점에서 다시 도전합니다.</p>' +
+      '<p class="muted">진행 · 계시록 슬레이 Floor ' + p.spireFloor +
       " · 성경전서 카드 #" + (p.cardsIndex + 1) + (bibleReady ? "" : " · 성경전서 불러오는 중…") + "</p>" +
       '<div class="game-lobby">' +
       '<article class="card game-pick"><p class="eyebrow">계시록 전용</p><h3>계시록 슬레이</h3><p class="muted">계시록만으로 맵·유물·장 보스를 돌파합니다. 빈칸은 조사까지 정확히 고릅니다.</p>' +
       '<p class="faint">현재 Floor ' + p.spireFloor + " · 클리어 " + p.spireWins + "회</p>" +
       '<button class="btn gold" type="button" data-act="game-start" data-game="spire">입장</button></article>' +
-      '<article class="card game-pick"><p class="eyebrow">성경전서</p><h3>성경전서 오토체스</h3><p class="muted">성경 전서 핵심어 유닛을 배치해 자동 전투합니다. 파장이 오를수록 적이 강해집니다.</p>' +
-      '<p class="faint">현재 Wave ' + p.chessWave + " · 승리 " + p.chessWins + "회</p>" +
-      '<button class="btn gold" type="button" data-act="game-start" data-game="chess"' + (bibleReady ? "" : " disabled") + ">입장</button></article>" +
-      '<article class="card game-pick"><p class="eyebrow">성경전서</p><h3>성경전서 카드 로그</h3><p class="muted">전서 구절 조각 카드를 순서대로 내어 콤보를 만듭니다. 맞히면 다음 구절로 진행합니다.</p>' +
+      '<article class="card game-pick"><p class="eyebrow">성경전서</p><h3>성경전서 카드 로그</h3><p class="muted">전서 구절 조각 카드를 순서대로 내어 콤보를 만듭니다. 힌트를 보고 맞히면 다음 구절로 진행합니다.</p>' +
       '<p class="faint">현재 구절 #' + (p.cardsIndex + 1) + " · 승리 " + p.cardsWins + "회</p>" +
       '<button class="btn gold" type="button" data-act="game-start" data-game="cards"' + (bibleReady ? "" : " disabled") + ">입장</button></article>" +
       "</div>";
@@ -315,6 +309,21 @@
 
   function chapterForFloor(floor) {
     return Math.min(22, Math.max(1, floor | 0));
+  }
+
+  function dealCardsRound(game, verse, E, seedTag) {
+    const pack = fragmentHand(verse, E, E.hash((verse.id || verse.ref) + ":" + seedTag));
+    rememberVerse(game, verse);
+    game.verseId = pack.id;
+    game.ref = pack.ref;
+    game.verseText = pack.text;
+    game.hint = pack.hint;
+    game.correct = pack.correct;
+    game.hand = pack.hand;
+    game.played = [];
+    game.phase = "play";
+    game.revealPending = null;
+    return pack;
   }
 
   function start(kind, ctx) {
@@ -349,51 +358,42 @@
         battle: null,
         relicChoices: null,
         usedFills: [],
+        seenVerseIds: [],
         log: "Floor " + floor + " · " + chapter + "장 길입니다. 이기면 다음 Floor로 진행합니다.",
         over: false,
         won: false
       };
     }
-    if (kind === "chess") {
-      const wave = Math.max(1, prog.chessWave | 0);
-      const list = poolFor("chess", ctx);
-      const bench = unitsFromMemory(list.slice(0, 400), cards, BIBLE_KEYWORDS);
-      return {
-        kind: "chess",
-        scope: "bible",
-        wave,
-        phase: "place",
-        bench,
-        board: [],
-        enemyPower: 12 + wave * 3 + Math.floor(knownBonus(cards, ctx.list || []) * 8),
-        bonus: knownBonus(cards, ctx.list || []),
-        log: "성경전서 Wave " + wave + " · 벤치 유닛을 배치한 뒤 전투하세요.",
-        result: null,
-        over: false
-      };
-    }
     const list = poolFor("cards", ctx);
-    const idx = Math.max(0, prog.cardsIndex | 0) % Math.max(1, list.length);
-    const verse = list[idx] || list[0] || (ctx.list || [])[0];
-    const pack = fragmentHand(verse, E, E.hash((verse.id || verse.ref) + ":hand:" + idx));
-    return {
+    const seen = [];
+    const verse = pickUnusedVerse(list, seen, true, cards, E.hash("cards:boot:" + (prog.cardsWins | 0) + ":" + Date.now() % 9973))
+      || list[0] || (ctx.list || [])[0];
+    const game = {
       kind: "cards",
       scope: "bible",
-      cardsIndex: idx,
+      cardsIndex: Math.max(0, prog.cardsIndex | 0),
       hp: 30,
       maxHp: 30,
-      enemy: 18 + Math.min(24, Math.floor(idx / 8)),
-      maxEnemy: 18 + Math.min(24, Math.floor(idx / 8)),
-      verseId: pack.id,
-      ref: pack.ref,
-      correct: pack.correct,
-      hand: pack.hand,
+      enemy: 18 + Math.min(24, Math.floor((prog.cardsWins | 0) / 8)),
+      maxEnemy: 18 + Math.min(24, Math.floor((prog.cardsWins | 0) / 8)),
+      seenVerseIds: seen,
+      verseId: "",
+      ref: "",
+      verseText: "",
+      hint: "",
+      correct: [],
+      hand: [],
       played: [],
       combo: 0,
-      log: "성경전서 카드 · " + pack.ref + ". 손패를 올바른 순서로 내세요.",
+      phase: "play",
+      revealPending: null,
+      log: "",
       over: false,
       won: false
     };
+    const pack = dealCardsRound(game, verse, E, "hand:" + game.cardsIndex);
+    game.log = "성경전서 카드 · " + pack.ref + ". 힌트를 보고 손패를 올바른 순서로 내세요.";
+    return game;
   }
 
   function nextBattleRound(game, ctx, keepEnemyHp) {
@@ -401,13 +401,18 @@
     const list = poolFor("spire", ctx);
     const chapterPool = list.filter((v) => v.chapter === game.chapter);
     const pool = chapterPool.length ? chapterPool : list;
-    const seed = E.hash("spire:" + game.floor + ":" + game.cursor + ":" + (game.usedFills || []).length + ":" + (game.battle && game.battle.id || ""));
-    let verse = game.battle && game.battle.verse
+    const seed = E.hash("spire:" + game.floor + ":" + game.cursor + ":" + (game.usedFills || []).length + ":" + (game.battle && game.battle.id || "") + ":" + (game.seenVerseIds || []).length);
+    const reuseSame = keepEnemyHp != null && game.battle && game.battle.verse;
+    let verse = reuseSame
       ? game.battle.verse
-      : pickVerses(pool, 1, true, ctx.cards, seed)[0] || pool[0];
+      : pickUnusedVerse(pool, game.seenVerseIds || (game.seenVerseIds = []), true, ctx.cards, seed);
+    if (!verse) verse = pool[0] || list[0];
+    rememberVerse(game, verse);
     let round = clozeRound(verse, E, seed, game.usedFills);
     if (!round.blanks.length || (game.usedFills || []).includes(round.mode === "multi" ? round.answers.join("|") : round.answer)) {
-      verse = pickVerses(pool.filter((v) => v.id !== verse.id), 1, false, ctx.cards, seed + 9)[0] || pickVerses(pool, 1, false, ctx.cards, seed + 11)[0] || verse;
+      const altPool = pool.filter((v) => verseKey(v) !== verseKey(verse));
+      verse = pickUnusedVerse(altPool.length ? altPool : pool, game.seenVerseIds, false, ctx.cards, seed + 9) || verse;
+      rememberVerse(game, verse);
       round = clozeRound(verse, E, seed + 21, []);
     }
     const node = game.nodes[game.cursor];
@@ -532,56 +537,43 @@
     return game;
   }
 
-  function placeChess(game, unitId) {
-    if (game.phase !== "place" || game.board.length >= 8) return game;
-    const idx = game.bench.findIndex((u) => u.id === unitId);
-    if (idx < 0) return game;
-    const unit = game.bench[idx];
-    game.bench = game.bench.slice(0, idx).concat(game.bench.slice(idx + 1));
-    game.board = game.board.concat([unit]);
-    game.log = unit.name + " 배치 (" + game.board.length + "/8)";
+  function beginCardsReveal(game, outcome, message) {
+    game.phase = "reveal";
+    game.revealPending = outcome;
+    game.log = message;
     return game;
   }
 
-  function unplaceChess(game, index) {
-    if (game.phase !== "place") return game;
-    const i = Number(index);
-    if (!(i >= 0 && i < game.board.length)) return game;
-    const unit = game.board[i];
-    game.board = game.board.slice(0, i).concat(game.board.slice(i + 1));
-    game.bench = game.bench.concat([unit]);
-    return game;
-  }
-
-  function fightChess(game, ctx) {
-    if (game.phase !== "place" || !game.board.length) {
-      game.log = "유닛을 하나 이상 배치하세요.";
+  function advanceCardsAfterReveal(game, ctx) {
+    const pending = game.revealPending;
+    game.revealPending = null;
+    if (pending === "lose") {
+      game.phase = "play";
       return game;
     }
-    game.phase = "fight";
-    const raw = game.board.reduce((s, u) => s + u.atk, 0);
-    const powered = Math.round(raw * (1 + game.bonus));
-    const enemy = game.enemyPower;
-    const won = powered >= enemy;
-    game.result = { raw, powered, enemy, won };
-    game.over = true;
-    game.phase = "result";
-    if (won) {
-      saveProgress(ctx, {
-        chessWave: game.wave + 1,
-        chessWins: progressOf(ctx).chessWins + 1
-      });
-      game.log = "승리! Wave " + game.wave + " 클리어 → Wave " + (game.wave + 1) +
-        " (아군 " + powered + " vs 적 " + enemy + ")";
-      if (ctx.addXp) ctx.addXp(15);
-    } else {
-      game.log = "패배… Wave " + game.wave + "에서 재도전하세요. 아군 " + powered + " vs 적 " + enemy;
+    if (pending === "win") {
+      game.phase = "play";
+      return game;
     }
+    if (pending === "next") {
+      const list = poolFor("cards", ctx);
+      const verse = pickUnusedVerse(list, game.seenVerseIds || (game.seenVerseIds = []), true, ctx.cards,
+        ctx.E.hash("cards:next:" + (game.seenVerseIds || []).length + ":" + game.cardsIndex));
+      if (!verse) {
+        game.phase = "play";
+        return game;
+      }
+      const pack = dealCardsRound(game, verse, ctx.E, "next:" + (game.seenVerseIds || []).length);
+      game.combo = Math.max(0, game.combo - 1);
+      game.log = "이어서 " + pack.ref + ". 힌트를 보고 순서대로 내세요.";
+      return game;
+    }
+    game.phase = "play";
     return game;
   }
 
   function playCard(game, word, ctx) {
-    if (game.over) return game;
+    if (game.over || game.phase === "reveal") return game;
     if (!game.hand.includes(word) || game.played.includes(word)) return game;
     const idx = game.played.length;
     game.hand = game.hand.filter((w) => w !== word);
@@ -593,7 +585,7 @@
       if (game.hp <= 0) {
         game.over = true;
         game.won = false;
-        game.log = "HP 소진. 같은 구절에서 다시 도전하세요.";
+        return beginCardsReveal(game, "lose", "HP 소진. 구절 본문을 확인한 뒤 같은 자리에서 다시 도전하세요.");
       }
       return game;
     }
@@ -609,21 +601,12 @@
         cardsIndex: nextIndex,
         cardsWins: progressOf(ctx).cardsWins + 1
       });
-      game.log = "적 HP 0. " + game.ref + " 클리어 → 다음 구절 #" + (nextIndex + 1);
+      game.cardsIndex = nextIndex;
       if (ctx.addXp) ctx.addXp(18);
-      return game;
+      return beginCardsReveal(game, "win", "적 HP 0. " + game.ref + " 클리어. 본문을 확인하세요.");
     }
     if (game.played.length >= game.correct.length) {
-      const list = poolFor("cards", ctx);
-      const nextVerse = list[(game.cardsIndex + 1) % Math.max(1, list.length)] || pickVerses(list, 1, true, ctx.cards, game.cardsIndex)[0];
-      const pack = fragmentHand(nextVerse, ctx.E, ctx.E.hash((nextVerse.id || nextVerse.ref) + ":next:" + game.cardsIndex));
-      game.verseId = pack.id;
-      game.ref = pack.ref;
-      game.correct = pack.correct;
-      game.hand = pack.hand;
-      game.played = [];
-      game.combo = Math.max(0, game.combo - 1);
-      game.log += " · 이어서 " + pack.ref;
+      return beginCardsReveal(game, "next", game.ref + " 조각을 다 맞췄습니다. 본문을 확인한 뒤 다음 구절로 갑니다.");
     }
     return game;
   }
@@ -638,14 +621,9 @@
       if (action === "spire-relic") return pickRelic(game, payload.id);
       return game;
     }
-    if (game.kind === "chess") {
-      if (action === "chess-place") return placeChess(game, payload.id);
-      if (action === "chess-unplace") return unplaceChess(game, payload.index);
-      if (action === "chess-fight") return fightChess(game, ctx);
-      return game;
-    }
     if (game.kind === "cards") {
       if (action === "cards-play") return playCard(game, payload.word, ctx);
+      if (action === "cards-continue") return advanceCardsAfterReveal(game, ctx);
       return game;
     }
     return game;
@@ -687,43 +665,35 @@
       '<p class="row"><button class="btn ghost" type="button" data-act="game-back">로비로</button></p></div>';
   }
 
-  function chessHtml(game) {
-    const cells = [];
-    for (let i = 0; i < 8; i++) {
-      const u = game.board[i];
-      cells.push(u
-        ? '<button type="button" class="chess-cell filled" data-act="chess-unplace" data-index="' + i + '"><strong>' + esc(u.name) + "</strong><small>ATK " + u.atk + (u.mastered ? " · 암기" : "") + "</small></button>"
-        : '<div class="chess-cell">+</div>');
-    }
-    return '<div class="game-shell"><div class="game-top"><p class="eyebrow">성경전서 오토체스 · Wave ' + game.wave + "</p>" +
-      '<span class="pill ok">암기 보너스 +' + Math.round(game.bonus * 100) + "%</span></div>" +
-      '<p class="muted">적 전투력 ' + game.enemyPower + " · 이기면 Wave " + (game.wave + 1) + "로 진행</p>" +
-      '<p class="game-log">' + esc(game.log) + "</p>" +
-      '<div class="chess-board">' + cells.join("") + "</div>" +
-      (game.phase === "place"
-        ? '<p class="muted">벤치 · 성경전서 핵심어 유닛</p><div class="row wrap">' +
-          game.bench.map((u) => '<button class="btn" type="button" data-act="chess-place" data-id="' + esc(u.id) + '">' + esc(u.name) + " · " + u.atk + "</button>").join("") +
-          '</div><p style="margin-top:14px"><button class="btn gold" type="button" data-act="chess-fight">전투 시작 (자동)</button></p>'
-        : '<article class="card"><h3>' + (game.result && game.result.won ? "승리 · 다음 Wave" : "패배 · 같은 Wave") + "</h3><p>아군 전투력 " +
-          (game.result ? game.result.powered : 0) + " / 적 " + (game.result ? game.result.enemy : 0) +
-          '</p><p><button class="btn gold" type="button" data-act="game-retry">다시</button> <button class="btn" type="button" data-act="game-back">로비</button></p></article>') +
-      '<p class="row"><button class="btn ghost" type="button" data-act="game-back">로비로</button></p></div>';
-  }
-
   function cardsHtml(game) {
+    if (game.phase === "reveal") {
+      const pending = game.revealPending;
+      const contLabel = pending === "win" ? "다음 구절" : pending === "lose" ? "다시 도전" : "다음 구절 계속";
+      const contAct = pending === "next" ? "cards-continue" : "game-retry";
+      return '<div class="game-shell"><div class="game-top"><div><p class="eyebrow">성경전서 카드 로그 · ' + esc(game.ref || game.verseId) +
+        "</p>" + hpBar(game.hp, game.maxHp || 30, "내 HP") + "</div>" +
+        '<div class="game-stats"><span><b>×' + game.combo + "</b><small>콤보</small></span></div></div>" +
+        hpBar(game.enemy, game.maxEnemy || game.enemy, "적 HP") +
+        '<p class="game-log">' + esc(game.log) + "</p>" +
+        '<article class="card"><p class="eyebrow">개역한글 본문</p><h3>' + esc(game.ref || "") + "</h3>" +
+        '<p class="scripture">' + esc(game.verseText || "") + "</p>" +
+        '<p><button class="btn gold" type="button" data-act="' + contAct + '">' + contLabel +
+        '</button> <button class="btn" type="button" data-act="game-back">로비</button></p></article>' +
+        '<p class="row"><button class="btn ghost" type="button" data-act="game-back">로비로</button></p></div>';
+    }
     return '<div class="game-shell"><div class="game-top"><div><p class="eyebrow">성경전서 카드 로그 · ' + esc(game.ref || game.verseId) +
       "</p>" + hpBar(game.hp, game.maxHp || 30, "내 HP") + "</div>" +
       '<div class="game-stats"><span><b>×' + game.combo + "</b><small>콤보</small></span></div></div>" +
       hpBar(game.enemy, game.maxEnemy || game.enemy, "적 HP") +
       '<p class="game-log">' + esc(game.log) + "</p>" +
+      '<p class="faint">' + esc(game.hint || "") + "</p>" +
       '<div class="card-field"><p class="muted">필드 (순서대로 제출)</p><div class="row wrap">' +
       (game.played.length ? game.played.map((c) => '<span class="pill">' + esc(c) + "</span>").join("") : '<span class="faint">카드를 내세요</span>') +
       "</div></div>" +
       '<p class="muted">손패 · 구절 조각 카드</p><div class="row wrap">' +
       game.hand.map((c) => '<button class="btn" type="button" data-act="cards-play" data-word="' + esc(c) + '"' + (game.over ? " disabled" : "") + ">" + esc(c) + "</button>").join("") +
       "</div>" +
-      '<article class="card" style="margin-top:16px"><p class="muted">올바른 구절 순서면 콤보 피해. 틀리면 자해. 이기면 다음 구절로 진행합니다.</p>' +
-      (game.over ? '<p><button class="btn gold" type="button" data-act="game-retry">' + (game.won ? "다음 구절" : "다시 도전") + '</button> <button class="btn" type="button" data-act="game-back">로비</button></p>' : "") +
+      '<article class="card" style="margin-top:16px"><p class="muted">힌트의 책·장과 시작·끝 조각을 보고 순서를 맞추세요. 틀리면 자해, 이기면 본문을 본 뒤 다음 구절로 갑니다.</p>' +
       "</article>" +
       '<p class="row"><button class="btn ghost" type="button" data-act="game-back">로비로</button></p></div>';
   }
@@ -731,7 +701,6 @@
   function html(game, ctx) {
     if (!game) return lobbyHtml(ctx);
     if (game.kind === "spire") return spireHtml(game);
-    if (game.kind === "chess") return chessHtml(game);
     if (game.kind === "cards") return cardsHtml(game);
     return lobbyHtml(ctx);
   }
@@ -742,9 +711,11 @@
     act,
     html,
     KEYWORDS: REV_KEYWORDS,
-    BIBLE_KEYWORDS,
     RELICS,
     exactFill,
-    clozeRound
+    clozeRound,
+    pickUnusedVerse,
+    cardsHint,
+    verseKey
   };
 })(typeof window !== "undefined" ? window : globalThis);

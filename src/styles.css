@@ -777,35 +777,6 @@ textarea:focus, .textin:focus { border-color: rgba(247, 214, 90, 0.55); backgrou
 }
 .spire-node .pill { margin-left: auto; }
 .pill.ok { background: var(--good-soft); }
-.chess-board {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin: 10px 0 16px;
-  padding: 10px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--fill);
-}
-.chess-cell {
-  aspect-ratio: 1;
-  border-radius: 12px;
-  border: 1.5px solid var(--line-strong);
-  background: var(--glass);
-  display: grid;
-  place-items: center;
-  text-align: center;
-  padding: 6px;
-  color: var(--faint);
-  font-size: 13px;
-}
-.chess-cell.filled {
-  background: var(--star-soft);
-  color: var(--ink);
-  cursor: pointer;
-}
-.chess-cell.filled strong { display: block; font-size: 13px; }
-.chess-cell.filled small { color: var(--muted); }
 .card-field {
   min-height: 72px;
   border-radius: 12px;
@@ -818,7 +789,6 @@ textarea:focus, .textin:focus { border-color: rgba(247, 214, 90, 0.55); backgrou
 
 @media (max-width: 860px) {
   .game-lobby { grid-template-columns: 1fr; }
-  .chess-board { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 860px) {
