@@ -65,7 +65,8 @@
     if (!B || !B.load) return Promise.resolve(null);
     if (!bibleGameLoading) {
       bibleGameLoading = B.load().then(() => {
-        bibleGameList = B.sampleVerses(160, 17);
+        // Full flat list; card log filters to the chapter allowlist in LampGames.
+        bibleGameList = B.flatList();
         return bibleGameList;
       }).catch(() => {
         bibleGameLoading = null;

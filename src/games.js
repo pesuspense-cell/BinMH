@@ -65,11 +65,42 @@
     return String(verse.id || verse.ref || verseLabel(verse));
   }
 
+  // 성경전서 카드 로그 구절 풀: 지정 OT 장 + 잠언~말라기 전장 + 신약 전장
+  const CARD_SELECTIVE_CHAPTERS = {
+    1: [1, 2, 3, 6, 9, 15, 37],
+    2: [1, 2, 3, 12, 19, 25],
+    4: [19, 21],
+    5: [13, 18, 29, 32],
+    6: [9],
+    11: [9, 11],
+    19: [21, 23, 109, 119]
+  };
+  const CARD_POOL_FROM_BOOK = 20; // 잠언(20)부터 요한계시록(66)까지 전장
+  const CARDS_CORRECT = 5;
+  const CARDS_DECOYS = 4;
+  const CARDS_WRONG_HP = 5;
+  const CARDS_MAX_HP = 30;
+
+  function verseAllowedForCards(verse) {
+    if (!verse) return false;
+    const book = Number(verse.book) || 0;
+    const chapter = Number(verse.chapter) || 0;
+    if (!book || !chapter) return false;
+    if (book >= CARD_POOL_FROM_BOOK) return true;
+    const allowed = CARD_SELECTIVE_CHAPTERS[book];
+    return !!(allowed && allowed.indexOf(chapter) >= 0);
+  }
+
+  function filterCardPool(list) {
+    return (list || []).filter(verseAllowedForCards);
+  }
+
   function poolFor(kind, ctx) {
     if (kind === "spire") return (ctx.list || []).slice();
     const bible = ctx.bibleList;
-    if (bible && bible.length) return bible.slice();
-    return (ctx.list || []).slice();
+    const raw = (bible && bible.length) ? bible : (ctx.list || []);
+    const filtered = filterCardPool(raw);
+    return filtered.length ? filtered : raw.slice();
   }
 
   function pickVerses(list, n, preferKnown, cards, seed) {
@@ -255,17 +286,58 @@
     };
   }
 
-  function fragmentHand(verse, E, seed) {
-    const w = E.words(verse.text).map((raw) => String(raw).replace(/^[“"'(\[]+|[”"'.,!?…·:;)\]]+$/g, "") || raw);
-    const take = Math.min(5, Math.max(3, w.length));
-    const correct = w.slice(0, take);
+  function cleanCardWord(raw) {
+    return String(raw || "").replace(/^[“"'(\[]+|[”"'.,!?…·:;)\]]+$/g, "") || String(raw || "");
+  }
+
+  function fiveCorrectChunks(verse, E) {
+    const w = E.words(verse.text || "").map(cleanCardWord).filter(Boolean);
+    if (w.length < CARDS_CORRECT) return null;
+    return w.slice(0, CARDS_CORRECT);
+  }
+
+  function decoyChunks(pool, verse, correct, E, seed, count) {
+    const taken = new Set((correct || []).map((c) => E.normalize(c)));
+    const fills = [];
+    const others = shuffle((pool || []).filter((v) => verseKey(v) !== verseKey(verse)), seed);
+    for (let i = 0; i < others.length && fills.length < count * 4; i++) {
+      const words = E.words(others[i].text || "").map(cleanCardWord).filter(Boolean);
+      for (let j = 0; j < words.length; j++) {
+        const part = words[j];
+        if (part.length < 2) continue;
+        const key = E.normalize(part);
+        if (taken.has(key)) continue;
+        taken.add(key);
+        fills.push(part);
+        if (fills.length >= count * 4) break;
+      }
+    }
+    const picked = shuffle(fills, seed + 3).slice(0, count);
+    const fallback = ["아멘", "시작", "증거", "평강", "생명", "말씀", "은혜", "영광"];
+    let n = 0;
+    while (picked.length < count) {
+      const word = fallback[n % fallback.length] + (n >= fallback.length ? String(n) : "");
+      n += 1;
+      if (taken.has(E.normalize(word))) continue;
+      taken.add(E.normalize(word));
+      picked.push(word);
+    }
+    return picked;
+  }
+
+  function fragmentHand(verse, E, seed, pool) {
+    const correct = fiveCorrectChunks(verse, E);
+    if (!correct) return null;
+    const decoys = decoyChunks(pool || [], verse, correct, E, seed + 11, CARDS_DECOYS);
+    const hand = shuffle(correct.concat(decoys), seed);
     return {
       id: verse.id,
       ref: verseLabel(verse),
       text: verse.text || "",
       verse,
       correct,
-      hand: shuffle(correct, seed),
+      decoys,
+      hand,
       hint: cardsHint(verse, E)
     };
   }
@@ -297,7 +369,7 @@
       '<article class="card game-pick"><p class="eyebrow">계시록 전용</p><h3>계시록 슬레이</h3><p class="muted">계시록 전 장에서 뽑은 구절로 맵·장 보스를 돌파합니다. 빈칸은 조사까지 정확히 고릅니다.</p>' +
       '<p class="faint">현재 Floor ' + p.spireFloor + " · 클리어 " + p.spireWins + "회</p>" +
       '<button class="btn gold" type="button" data-act="game-start" data-game="spire">입장</button></article>' +
-      '<article class="card game-pick"><p class="eyebrow">성경전서</p><h3>성경전서 카드 로그</h3><p class="muted">전서 구절 조각 카드를 순서대로 내어 콤보를 만듭니다. 힌트를 보고 맞히면 다음 구절로 진행합니다.</p>' +
+      '<article class="card game-pick"><p class="eyebrow">성경전서</p><h3>성경전서 카드 로그</h3><p class="muted">허용 장에서 뽑은 구절의 조각 5장을 미끼 카드와 섞어 순서대로 냅니다. HP·콤보는 구절을 이어도 유지되고, HP가 0이 되면 콤보가 끊깁니다.</p>' +
       '<p class="faint">현재 구절 #' + (p.cardsIndex + 1) + " · 승리 " + p.cardsWins + "회</p>" +
       '<button class="btn gold" type="button" data-act="game-start" data-game="cards"' + (bibleReady ? "" : " disabled") + ">입장</button></article>" +
       "</div>";
@@ -314,29 +386,43 @@
     return 3;
   }
 
-  function dealCardsRound(game, verse, E, seedTag) {
-    const pack = fragmentHand(verse, E, E.hash((verse.id || verse.ref) + ":" + seedTag));
+  function pickCardsVerse(list, seen, preferKnown, cards, seed) {
+    const eligible = (list || []).filter((v) => {
+      const E = root.LampEngine;
+      return E && fiveCorrectChunks(v, E);
+    });
+    const pool = eligible.length ? eligible : (list || []);
+    return pickUnusedVerse(pool, seen, preferKnown, cards, seed) || pool[0] || null;
+  }
+
+  function dealCardsRound(game, verse, E, seedTag, pool) {
+    const pack = fragmentHand(verse, E, E.hash((verse.id || verse.ref) + ":" + seedTag), pool || []);
+    if (!pack) return null;
     rememberVerse(game, verse);
     game.verseId = pack.id;
     game.ref = pack.ref;
     game.verseText = pack.text;
     game.hint = pack.hint;
     game.correct = pack.correct;
+    game.decoys = pack.decoys;
     game.hand = pack.hand;
     game.played = [];
     game.phase = "play";
     game.revealPending = null;
+    game.over = false;
+    game.won = false;
     return pack;
   }
 
   function reclaimCardsHand(game, message) {
     const E = root.LampEngine;
     const seed = E && E.hash
-      ? E.hash("reclaim:" + (game.verseId || "") + ":" + (game.hp | 0) + ":" + (game.enemy | 0))
+      ? E.hash("reclaim:" + (game.verseId || "") + ":" + (game.hp | 0) + ":" + (game.played || []).length)
       : ((Date.now() + (game.hp | 0)) % 9973);
-    game.hand = shuffle((game.correct || []).slice(), seed);
+    const deck = (game.correct || []).concat(game.decoys || []);
+    game.hand = shuffle(deck.slice(), seed);
     game.played = [];
-    game.combo = 0;
+    // Combo persists across reclaim; only HP 0 clears it.
     game.phase = "play";
     game.revealPending = null;
     game.log = message || "손패를 다시 받았습니다. 올바른 순서로 내세요.";
@@ -379,22 +465,22 @@
     }
     const list = poolFor("cards", ctx);
     const seen = [];
-    const verse = pickUnusedVerse(list, seen, true, cards, E.hash("cards:boot:" + (prog.cardsWins | 0) + ":" + Date.now() % 9973))
+    const verse = pickCardsVerse(list, seen, true, cards, E.hash("cards:boot:" + (prog.cardsWins | 0) + ":" + Date.now() % 9973))
       || list[0] || (ctx.list || [])[0];
     const game = {
       kind: "cards",
       scope: "bible",
       cardsIndex: Math.max(0, prog.cardsIndex | 0),
-      hp: 30,
-      maxHp: 30,
-      enemy: 18 + Math.min(24, Math.floor((prog.cardsWins | 0) / 8)),
-      maxEnemy: 18 + Math.min(24, Math.floor((prog.cardsWins | 0) / 8)),
+      cardsWins: Math.max(0, prog.cardsWins | 0),
+      hp: CARDS_MAX_HP,
+      maxHp: CARDS_MAX_HP,
       seenVerseIds: seen,
       verseId: "",
       ref: "",
       verseText: "",
       hint: "",
       correct: [],
+      decoys: [],
       hand: [],
       played: [],
       combo: 0,
@@ -404,8 +490,32 @@
       over: false,
       won: false
     };
-    const pack = dealCardsRound(game, verse, E, "hand:" + game.cardsIndex);
-    game.log = "성경전서 카드 · " + pack.ref + ". 힌트를 보고 손패를 올바른 순서로 내세요.";
+    const pack = dealCardsRound(game, verse, E, "hand:" + game.cardsIndex, list);
+    if (!pack) {
+      game.log = "카드 구절을 준비하지 못했습니다.";
+      return game;
+    }
+    game.log = "성경전서 카드 · " + pack.ref + ". 힌트를 보고 진짜 조각 " + CARDS_CORRECT +
+      "장을 순서대로 내세요. 틀린 제출마다 HP -" + CARDS_WRONG_HP + ".";
+    return game;
+  }
+
+  function nextCardsVerse(game, ctx) {
+    const E = ctx.E;
+    const list = poolFor("cards", ctx);
+    const seen = game.seenVerseIds || [];
+    const verse = pickCardsVerse(
+      list,
+      seen,
+      true,
+      ctx.cards,
+      E.hash("cards:next:" + (game.cardsIndex | 0) + ":" + (game.combo | 0) + ":" + (game.hp | 0))
+    ) || list[0];
+    if (!verse) return game;
+    const pack = dealCardsRound(game, verse, E, "hand:" + game.cardsIndex + ":" + (game.combo | 0), list);
+    if (!pack) return game;
+    game.log = "다음 구절 · " + pack.ref + ". HP " + game.hp + "/" + game.maxHp + " · 콤보 ×" + game.combo +
+      " · 승리 " + (game.cardsWins | 0) + "회";
     return game;
   }
 
@@ -553,13 +663,16 @@
   function advanceCardsAfterReveal(game, ctx) {
     const pending = game.revealPending;
     game.revealPending = null;
-    if (pending === "lose" || pending === "win") {
+    if (pending === "win") {
+      // HP·combo persist; only the verse advances.
+      return nextCardsVerse(game, ctx);
+    }
+    if (pending === "lose") {
       game.phase = "play";
       return game;
     }
-    // Legacy "next" path: keep same fight going via reclaim instead of soft-advancing.
     if (pending === "next") {
-      return reclaimCardsHand(game, "같은 구절로 다시 손패를 받았습니다. 적을 쓰러뜨리세요.");
+      return reclaimCardsHand(game, "같은 구절로 다시 손패를 받았습니다. 올바른 순서로 내세요.");
     }
     game.phase = "play";
     return game;
@@ -567,43 +680,40 @@
 
   function playCard(game, word, ctx) {
     if (game.over || game.phase === "reveal") return game;
-    if (!game.hand.includes(word) || game.played.includes(word)) return game;
+    const handIdx = game.hand.indexOf(word);
+    if (handIdx < 0) return game;
     const idx = game.played.length;
-    game.hand = game.hand.filter((w) => w !== word);
+    game.hand = game.hand.slice(0, handIdx).concat(game.hand.slice(handIdx + 1));
     game.played = game.played.concat([word]);
     if (game.correct[idx] !== word) {
-      game.hp = Math.max(0, game.hp - 5);
-      game.combo = 0;
-      game.log = "순서가 틀렸습니다. 자해 -5";
+      // Wrong full attempt: HP cost, reclaim, retry same verse. Combo only dies at HP 0.
+      game.hp = Math.max(0, game.hp - CARDS_WRONG_HP);
+      game.log = "틀린 조각·순서입니다. HP -" + CARDS_WRONG_HP;
       if (game.hp <= 0) {
+        game.combo = 0;
         game.over = true;
         game.won = false;
-        return beginCardsReveal(game, "lose", "HP 소진. 구절 본문을 확인한 뒤 같은 자리에서 다시 도전하세요.");
+        return beginCardsReveal(game, "lose", "HP 소진 · 콤보 초기화. 구절 본문을 확인한 뒤 다시 도전하세요.");
       }
-      if (!game.hand.length) {
-        return reclaimCardsHand(game, "손패를 다 냈지만 맞지 않았습니다. 다시 순서대로 내세요.");
-      }
-      return game;
+      return reclaimCardsHand(game, "틀린 제출 · HP " + game.hp + "/" + game.maxHp +
+        ". 손패를 다시 섞었습니다. 콤보 ×" + game.combo + " 유지.");
     }
     game.combo += 1;
-    const dmg = 4 + game.combo * 2;
-    game.enemy = Math.max(0, game.enemy - dmg);
-    game.log = "콤보 ×" + game.combo + "! 피해 " + dmg;
-    if (game.enemy <= 0) {
-      game.over = true;
-      game.won = true;
+    game.log = "맞춤 · 콤보 ×" + game.combo;
+    // Verse clears only when all five true chunks are in order (decoys may remain in hand).
+    if (game.played.length >= game.correct.length) {
       const nextIndex = game.cardsIndex + 1;
+      const nextWins = progressOf(ctx).cardsWins + 1;
       saveProgress(ctx, {
         cardsIndex: nextIndex,
-        cardsWins: progressOf(ctx).cardsWins + 1
+        cardsWins: nextWins
       });
       game.cardsIndex = nextIndex;
+      game.cardsWins = nextWins;
+      game.won = true;
       if (ctx.addXp) ctx.addXp(18);
-      return beginCardsReveal(game, "win", "적 HP 0. " + game.ref + " 클리어. 본문을 확인하세요.");
-    }
-    if (game.played.length >= game.correct.length) {
-      // Hand fully submitted without a win — reclaim and continue the same fight.
-      return reclaimCardsHand(game, "조각을 다 냈지만 적이 남았습니다. 같은 구절로 다시 내세요.");
+      return beginCardsReveal(game, "win", game.ref + " 클리어! 승리 " + nextWins +
+        "회 · 콤보 ×" + game.combo + " · HP " + game.hp + " 유지. 본문을 확인하세요.");
     }
     return game;
   }
@@ -659,14 +769,15 @@
   }
 
   function cardsHtml(game) {
+    const wins = game.cardsWins | 0;
+    const stats = '<div class="game-stats"><span><b>×' + game.combo +
+      '</b><small>콤보</small></span><span><b>' + wins + "</b><small>승리</small></span></div>";
     if (game.phase === "reveal") {
       const pending = game.revealPending;
       const contLabel = pending === "win" ? "다음 구절" : pending === "lose" ? "다시 도전" : "계속";
-      const contAct = pending === "next" ? "cards-continue" : "game-retry";
+      const contAct = pending === "win" || pending === "next" ? "cards-continue" : "game-retry";
       return '<div class="game-shell"><div class="game-top"><div><p class="eyebrow">성경전서 카드 로그 · ' + esc(game.ref || game.verseId) +
-        "</p>" + hpBar(game.hp, game.maxHp || 30, "내 HP") + "</div>" +
-        '<div class="game-stats"><span><b>×' + game.combo + "</b><small>콤보</small></span></div></div>" +
-        hpBar(game.enemy, game.maxEnemy || game.enemy, "적 HP") +
+        "</p>" + hpBar(game.hp, game.maxHp || CARDS_MAX_HP, "내 HP") + "</div>" + stats + "</div>" +
         '<p class="game-log">' + esc(game.log) + "</p>" +
         '<article class="card"><p class="eyebrow">개역한글 본문</p><h3>' + esc(game.ref || "") + "</h3>" +
         '<p class="scripture">' + esc(game.verseText || "") + "</p>" +
@@ -675,18 +786,17 @@
         '<p class="row"><button class="btn ghost" type="button" data-act="game-back">로비로</button></p></div>';
     }
     return '<div class="game-shell"><div class="game-top"><div><p class="eyebrow">성경전서 카드 로그 · ' + esc(game.ref || game.verseId) +
-      "</p>" + hpBar(game.hp, game.maxHp || 30, "내 HP") + "</div>" +
-      '<div class="game-stats"><span><b>×' + game.combo + "</b><small>콤보</small></span></div></div>" +
-      hpBar(game.enemy, game.maxEnemy || game.enemy, "적 HP") +
+      "</p>" + hpBar(game.hp, game.maxHp || CARDS_MAX_HP, "내 HP") + "</div>" + stats + "</div>" +
       '<p class="game-log">' + esc(game.log) + "</p>" +
       '<p class="faint">' + esc(game.hint || "") + "</p>" +
-      '<div class="card-field"><p class="muted">필드 (순서대로 제출)</p><div class="row wrap">' +
+      '<div class="card-field"><p class="muted">필드 (진짜 조각 ' + (game.correct || []).length + "장 · 순서대로)</p><div class=\"row wrap\">" +
       (game.played.length ? game.played.map((c) => '<span class="pill">' + esc(c) + "</span>").join("") : '<span class="faint">카드를 내세요</span>') +
       "</div></div>" +
-      '<p class="muted">손패 · 구절 조각 카드</p><div class="row wrap">' +
+      '<p class="muted">손패 · 진짜 ' + (game.correct || []).length + " + 미끼 " + (game.decoys || []).length + "</p><div class=\"row wrap\">" +
       game.hand.map((c) => '<button class="btn" type="button" data-act="cards-play" data-word="' + esc(c) + '"' + (game.over ? " disabled" : "") + ">" + esc(c) + "</button>").join("") +
       "</div>" +
-      '<article class="card" style="margin-top:16px"><p class="muted">힌트의 책·장과 시작·끝 조각을 보고 순서를 맞추세요. 손패를 다 냈는데도 이기지 못하면 다시 손패를 받습니다. 적 HP 0 또는 내 HP 0일 때 본문이 공개됩니다.</p>' +
+      '<article class="card" style="margin-top:16px"><p class="muted">힌트의 책·장과 시작·끝 조각을 보고 진짜 5장을 고르세요. 틀린 제출마다 HP -' +
+      CARDS_WRONG_HP + ". 구절을 이어도 HP·콤보는 유지되고, HP 0일 때만 콤보가 끊기며 본문이 공개됩니다.</p>" +
       "</article>" +
       '<p class="row"><button class="btn ghost" type="button" data-act="game-back">로비로</button></p></div>';
   }
@@ -710,6 +820,11 @@
     cardsHint,
     verseKey,
     problemBudget,
-    reclaimCardsHand
+    reclaimCardsHand,
+    verseAllowedForCards,
+    filterCardPool,
+    CARDS_CORRECT,
+    CARDS_DECOYS,
+    CARDS_WRONG_HP
   };
 })(typeof window !== "undefined" ? window : globalThis);
