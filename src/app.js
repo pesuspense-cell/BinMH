@@ -15,7 +15,8 @@
   const MOODS = ["평안", "감사", "회개", "소망", "간구", "기쁨"];
 
   const PHASE_HELP = {
-    read: "귀 아이콘으로 듣고, 소리 내어 읽은 뒤 다음으로 넘어갑니다.",
+    read: "귀 아이콘으로 듣고, 소리 내어 읽은 뒤 다음으로 넘어갑니다. 장·절 표시를 함께 새깁니다.",
+    scaffold: "첫소리만 보고 본문을 떠올린 뒤, 이 절이 몇 장 몇 절인지 고릅니다.",
     cloze: "핵심어만 비우고 조사와 어미는 단서로 남겼습니다. 스스로 떠올린 말이 읽기만 한 말보다 오래 남습니다.",
     recall: "힌트 없이 적어야 정말 외운 것입니다. 띄어쓰기는 달라도 됩니다.",
     review: "잊기 직전에 다시 꺼냅니다. 간격은 1일, 3일, 7일, 그 뒤로 조금씩 늘어납니다.",
@@ -258,6 +259,11 @@
   function refText(id) {
     const verse = map.get(id);
     return "계시록 " + verse.chapter + ":" + verse.verse;
+  }
+
+  function refLong(id) {
+    const verse = map.get(id);
+    return "계시록 " + verse.chapter + "장 " + verse.verse + "절";
   }
 
   function addXp(amount) {
@@ -1367,7 +1373,39 @@
   }
 
   function afterRead() {
-    beginCloze();
+    beginScaffold();
+  }
+
+  function beginScaffold() {
+    const session = ui.session;
+    const id = session.step.id;
+    const seed = E.hash(id + ":scaffold:" + today());
+    session.phase = "scaffold";
+    session.feedback = null;
+    session.step = {
+      id,
+      choices: E.distractorChoices(list, id, 4, seed),
+      misses: 0,
+      shake: false,
+      wrongChoice: ""
+    };
+  }
+
+  function submitScaffold(choice) {
+    const session = ui.session;
+    const step = session.step;
+    if (!step || session.phase !== "scaffold") return;
+    if (choice === step.id) {
+      step.wrongChoice = "";
+      step.shake = false;
+      beginCloze();
+      render();
+      return;
+    }
+    step.misses += 1;
+    step.wrongChoice = choice;
+    step.shake = true;
+    render();
   }
 
   function beginCloze() {
@@ -2231,7 +2269,7 @@
   }
 
   function welcomeHtml() {
-    return '<div class="welcome"><form class="card" data-act="welcome"><p class="eyebrow">개역한글 · 요한계시록</p><h1>하루 한 묶음, 천국의 길을 갑니다</h1><p class="lede">길이 맞는 만큼 읽고, 빈칸을 메우고, 힌트 없이 적습니다. 오늘 몫을 채우면 순례자가 한 걸음 나아갑니다.</p><label class="stack">뭐라고 부를까요<input class="textin" id="name" name="name" maxlength="16" placeholder="이름" autocomplete="name"></label>' +
+    return '<div class="welcome"><form class="card" data-act="welcome"><p class="eyebrow">개역한글 · 요한계시록</p><h1>하루 한 묶음, 천국의 길을 갑니다</h1><p class="lede">길이 맞는 만큼 읽고, 첫소리로 장·절을 맞춘 뒤 빈칸을 메우고, 힌트 없이 적습니다. 오늘 몫을 채우면 순례자가 한 걸음 나아갑니다.</p><label class="stack">뭐라고 부를까요<input class="textin" id="name" name="name" maxlength="16" placeholder="이름" autocomplete="name"></label>' +
       (ui.nameError ? '<p class="error">' + esc(ui.nameError) + "</p>" : "") +
       '<p><button class="btn gold" type="submit">암송을 시작할게요</button></p></form>' + welcomeSyncHtml() + "</div>";
   }
@@ -2369,12 +2407,13 @@
     const modeLabel = dailyMode() === "fixed5" ? "고정 5절" : "길이 맞춤 · 약 80일";
     const methods = [
       ["1", "길이 맞는 묶음", "한글 길이에 맞춰 하루 몫을 잡고, 책의 흐름을 따라 새깁니다. 기록에서 고정 5절도 고를 수 있습니다."],
-      ["2", "읽기", "귀 아이콘으로 듣고, 소리 내어 읽은 뒤 다음으로 넘어갑니다."],
-      ["3", "빈칸", "가려진 말을 스스로 꺼내면 기억이 남습니다."],
-      ["4", "백지 인출", "힌트 없이 적는 자리에서만 통과합니다."],
-      ["5", "간격", "1일, 3일, 7일 뒤, 잊기 직전에 다시 만납니다."],
-      ["6", "섞기", "다른 절과 섞어 물어 순서 단서에만 기대지 않게 합니다."],
-      ["7", "장 전체와 지키기", "한 장을 다 외우면 전체 시험이 열리고, 외운 장은 등불이 흔들릴 때 다시 꺼냅니다."]
+      ["2", "읽기", "귀 아이콘으로 듣고, 소리 내어 읽은 뒤 장·절을 함께 새깁니다."],
+      ["3", "첫소리 · 장·절", "첫소리만 보고 본문을 떠올린 뒤, 몇 장 몇 절인지 고릅니다."],
+      ["4", "빈칸", "가려진 말을 스스로 꺼내면 기억이 남습니다."],
+      ["5", "백지 인출", "힌트 없이 적는 자리에서만 통과합니다."],
+      ["6", "간격", "1일, 3일, 7일 뒤, 잊기 직전에 다시 만납니다."],
+      ["7", "섞기", "다른 절과 섞어 물어 순서 단서에만 기대지 않게 합니다."],
+      ["8", "장 전체와 지키기", "한 장을 다 외우면 전체 시험이 열리고, 외운 장은 등불이 흔들릴 때 다시 꺼냅니다."]
     ];
     return '<p class="eyebrow">오늘의 길 · ' + modeLabel + '</p><h1>천국의 길을 새기는 날</h1><p class="lede">' + (due ? "밀린 복습 " + due + "절을 먼저 한 뒤, " : "") + (goal ? "새 절 " + (goal - Math.min(passed, goal)) + "절이 남아 있습니다." : "새 절은 모두 한 번씩 통과했습니다. 복습과 장 지키기로 불을 유지합니다.") + "</p>" +
       '<article class="card adventure-card" style="margin-bottom:16px"><p class="eyebrow">천국의 길</p><div data-adv-slot>' + adventureMapHtml({}) + "</div></article>" +
@@ -2603,6 +2642,7 @@
     if (session.phase === "done") return doneHtml();
     if (session.feedback && (session.phase === "exam" || session.phase === "recall")) return shell(session, feedbackBlock(session.feedback));
     if (session.phase === "read") return shell(session, readStep());
+    if (session.phase === "scaffold") return shell(session, scaffoldStep());
     if (session.phase === "cloze") return shell(session, clozeStep());
     if (session.phase === "recall") return shell(session, recallStep());
     if (session.phase === "exam") return shell(session, examStep());
@@ -2611,8 +2651,8 @@
 
   function sessionMeta() {
     const session = ui.session;
-    if (session.phase === "read" || session.phase === "cloze" || session.phase === "recall") {
-      const frac = { read: 0.25, cloze: 0.6, recall: 0.9 }[session.phase] || 0;
+    if (session.phase === "read" || session.phase === "scaffold" || session.phase === "cloze" || session.phase === "recall") {
+      const frac = { read: 0.2, scaffold: 0.4, cloze: 0.65, recall: 0.9 }[session.phase] || 0;
       const base = session.learnIds.length ? (session.learnCursor + frac) / session.learnIds.length : 0;
       return { label: "새 절 " + (session.learnCursor + 1) + " / " + session.learnIds.length, pct: 20 + base * 60, help: PHASE_HELP[session.phase] };
     }
@@ -2639,10 +2679,24 @@
     const verse = map.get(ui.session.step.id);
     const meta = E.CHAPTER_META[verse.chapter - 1];
     const tail = tailOf(verse.id);
-    return '<p class="eyebrow">' + esc(meta.title) + (E.MARKS[verse.id] ? " · " + esc(E.MARKS[verse.id]) : "") + '</p><div class="verse-head"><h2>' + esc(refText(verse.id)) + "</h2>" + earButton(verse.id) + '</div><div class="paper"><p class="scripture">' +
+    return '<p class="eyebrow">' + esc(meta.title) + (E.MARKS[verse.id] ? " · " + esc(E.MARKS[verse.id]) : "") + '</p><div class="verse-head"><h2>' + esc(refLong(verse.id)) + "</h2>" + earButton(verse.id) + '</div><div class="paper"><p class="scripture">' +
       esc(verse.text) +
       "</p></div>" + (tail ? '<p class="faint">앞 절의 끝 · ' + esc(tail) + "</p>" : "") +
       '<div class="row study-actions"><button class="btn gold" type="button" data-act="after-read">다음</button>' + laterButton() + "</div>";
+  }
+
+  function scaffoldStep() {
+    const step = ui.session.step;
+    const verse = map.get(step.id);
+    const choices = (step.choices || []).map((id) => {
+      const bad = step.wrongChoice === id;
+      return '<button type="button" class="' + (bad ? "bad" : "") + '" data-act="scaffold-ref" data-choice="' + esc(id) + '">' + esc(refLong(id)) + "</button>";
+    }).join("");
+    return '<p class="eyebrow">첫소리 · 장·절</p><div class="verse-head"><h2>이 절은 몇 장 몇 절인가요?</h2>' + earButton(step.id) + '</div><div class="paper"><p class="skel scripture">' +
+      esc(E.skeleton(verse.text)) +
+      '</p></div><div class="choices ' + (step.shake ? "shake" : "") + '">' + choices + "</div>" +
+      (step.misses ? '<p class="help">장·절을 다시 고르세요. 첫소리는 그대로 단서가 됩니다.</p>' : "") +
+      '<div class="row study-actions">' + laterButton() + "</div>";
   }
 
   function clozeStep() {
@@ -2654,7 +2708,7 @@
       return '<button type="button" class="blank ' + (bad ? "bad" : "") + '" data-act="unfill" data-i="' + n + '">' + (token ? esc(token.word) : esc(syllableMask(unit.answer))) + "</button>";
     });
     const bank = step.bank.filter((token) => !used.has(token.uid)).map((token) => '<button type="button" class="pill" data-act="fill" data-uid="' + esc(token.uid) + '">' + esc(token.word) + "</button>").join("");
-    return '<div class="verse-head"><h2>' + esc(refText(step.id)) + "</h2>" + earButton(step.id) + '</div><div class="paper"><p class="scripture">' + line + '</p></div><div class="bank ' + (step.shake ? "shake" : "") + '">' + bank + "</div>" +
+    return '<div class="verse-head"><h2>' + esc(refLong(step.id)) + "</h2>" + earButton(step.id) + '</div><div class="paper"><p class="scripture">' + line + '</p></div><div class="bank ' + (step.shake ? "shake" : "") + '">' + bank + "</div>" +
       (step.misses ? '<p class="help">다른 말이 들어간 칸은 비워 두었습니다.</p>' : "") + '<div class="row study-actions">' + laterButton() + "</div>";
   }
 
@@ -2662,7 +2716,7 @@
     const step = ui.session.step;
     const verse = map.get(step.id);
     const tail = tailOf(step.id);
-    return '<div class="verse-head"><h2>' + esc(refText(step.id)) + "</h2>" + earButton(step.id) + "</div>" + (tail ? '<p class="faint">앞 절의 끝 · ' + esc(tail) + "</p>" : "") +
+    return '<div class="verse-head"><h2>' + esc(refLong(step.id)) + "</h2>" + earButton(step.id) + "</div>" + (tail ? '<p class="faint">앞 절의 끝 · ' + esc(tail) + "</p>" : "") +
       (step.showSkeleton ? '<p class="skel">' + esc(E.skeleton(verse.text)) + "</p>" : "") +
       '<form data-act="recall"><textarea name="text" rows="5" autocomplete="off" spellcheck="false" placeholder="힌트 없이, 개역한글 그대로 적어 보세요"' + (step.draftSpoken ? ' data-spoken="1"' : "") + ">" + esc(step.draft || "") + '</textarea><p class="faint">' + esc(dictateHint()) + "</p>" +
       actions('<button class="btn ghost" type="button" data-act="recall-hint"' + (step.showSkeleton ? " disabled" : "") + ">힌트</button>") + '</form><div class="row study-actions">' + laterButton() + "</div>";
@@ -2718,7 +2772,8 @@
     let detail = "";
     if (fb.kind === "recall" || fb.kind === "full" || fb.kind === "opening") {
       const answer = fb.kind === "opening" ? (fb.target || E.words(map.get(fb.id).text).slice(0, fb.n).join(" ")) : map.get(fb.id).text;
-      detail = '<p class="diff">' + diffHtml(fb.input, answer, fb.spoken) + '</p><p class="faint">본문</p><p>' + esc(map.get(fb.id).text) + "</p>";
+      const refLine = fb.id ? '<p class="answer-ref">' + esc(refLong(fb.id)) + "</p>" : "";
+      detail = '<p class="diff">' + diffHtml(fb.input, answer, fb.spoken) + "</p>" + refLine + '<p class="faint">본문</p><p class="scripture">' + esc(map.get(fb.id).text) + "</p>";
     } else if (fb.kind === "blanks") {
       const wrong = new Set(fb.wrong || []);
       detail = '<p class="scripture">' + clozeLine(map.get(fb.id).text, fb.units || [], (unit, n) =>
@@ -2917,6 +2972,7 @@
     }
     if (act === "voice-sample") return speakVerse("1:8");
     if (act === "after-read") { afterRead(); render(); return; }
+    if (act === "scaffold-ref") return submitScaffold(el.dataset.choice);
     if (act === "fill") return fillCloze(el.dataset.uid);
     if (act === "unfill") {
       delete ui.session.step.filled[el.dataset.i];

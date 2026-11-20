@@ -98,6 +98,10 @@ const unit1220 = E.clozeUnits(list.find((v) => v.id === "1:12").text);
 assert(unit1220.some((u) => u.answer === "일곱 금 촛대" && u.after === "를"), "1:12 phrase unit");
 assert(!E.clozeUnits(list.find((v) => v.id === "1:1").text).some((u) => u.kind === "number"), "천사 is not a number");
 assert(E.chosung("예수 그리스도") === "ㅇㅅ ㄱㄹㅅㄷ", "chosung");
+assert(E.skeleton(list[0].text).startsWith("예· 그·"), "skeleton first letters");
+const locChoices = E.distractorChoices(list, "1:7", 4, 11);
+assert(locChoices.length === 4 && locChoices.includes("1:7"), "locate choices include target");
+assert(new Set(locChoices).size === 4, "locate choices unique");
 
 for (let seed = 1; seed <= 200; seed++) {
   const ids = [0, 1, 2, 3, 4];

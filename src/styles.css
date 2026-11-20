@@ -542,9 +542,13 @@ textarea:focus, .textin:focus { border-color: rgba(247, 214, 90, 0.55); backgrou
 .miss { background: rgba(255, 152, 172, 0.32); border-radius: 6px; padding: 0 3px; }
 .extra { color: #f5c98a; text-decoration: line-through; }
 .choices { display: grid; gap: 8px; }
-.choices button { text-align: left; border-radius: 14px; border: 1px solid var(--line); background: var(--fill); padding: 12px 14px; }
+.choices button { text-align: left; border-radius: 14px; border: 1px solid var(--line); background: var(--fill); padding: 12px 14px; color: var(--ink); }
 .choices button:hover { background: var(--fill-hover); }
+.choices button.bad { background: var(--bad-soft); border-color: rgba(255, 152, 172, 0.45); }
 .skel { letter-spacing: 0.08em; color: var(--faint); }
+.answer-ref {
+  margin: 10px 0 4px; font-size: 1.15rem; font-weight: 720; color: var(--star); letter-spacing: 0.02em;
+}
 
 .methods { display: grid; gap: 10px; margin-top: 8px; }
 .methods div { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; }

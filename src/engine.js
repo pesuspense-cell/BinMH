@@ -1180,6 +1180,7 @@
     buildDailyQuestions,
     buildChapterQuestions,
     buildSpotQuestions,
+    distractorChoices,
     grade,
     searchVerses,
     makeClozeBank

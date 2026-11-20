@@ -1,4 +1,4 @@
-const CACHE = "walking-bible-v9";
+const CACHE = "walking-bible-v10";
 const CDN_HOST = "cdn.jsdelivr.net";
 const CDN_PATHS = ["/gh/orioncactus/pretendard@", "/npm/@supabase/supabase-js@"];
 const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg", "/icon-192.png", "/src/night.svg?v=2"];
