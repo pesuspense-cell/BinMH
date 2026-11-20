@@ -180,7 +180,15 @@ BB.load().then(() => {
   gameBox.LampEngine = E;
   vm.runInContext(fs.readFileSync("./src/games.js", "utf8"), gameBox);
   const G = gameBox.LampGames;
-  const bibleList = BB.sampleVerses(40, 17);
+  const bibleList = BB.flatList();
+  const cardPool = G.filterCardPool(bibleList);
+  assert(cardPool.length > 1000, "card allowlist pool size " + cardPool.length);
+  assert(cardPool.every((v) => G.verseAllowedForCards(v)), "card pool all allowed");
+  assert(!bibleList.filter((v) => v.book === 1 && v.chapter === 4).some((v) => G.verseAllowedForCards(v)), "gen 4 excluded");
+  assert(bibleList.filter((v) => v.bookName === "잠언" && v.chapter === 1).every((v) => G.verseAllowedForCards(v)), "proverbs allowed");
+  assert(bibleList.filter((v) => v.bookName === "마태복음" && v.chapter === 5).every((v) => G.verseAllowedForCards(v)), "matthew allowed");
+  assert(!bibleList.filter((v) => v.book === 3 && v.chapter === 1).some((v) => G.verseAllowedForCards(v)), "leviticus excluded");
+
   const progress = { spireFloor: 1, cardsIndex: 0, spireWins: 0, cardsWins: 0 };
   const ctx = {
     E,
@@ -200,19 +208,38 @@ BB.load().then(() => {
   const cards = G.start("cards", ctx);
   assert(cards.kind === "cards" && cards.hint && /힌트/.test(cards.hint), "cards hint");
   assert(cards.verseText && cards.seenVerseIds.length === 1, "cards tracks seen");
+  assert(G.verseAllowedForCards(bibleList.find((v) => v.id === cards.verseId) || { book: Number(String(cards.verseId).split(".")[0]), chapter: Number(String(cards.verseId).split(/[.:]/)[1]) }), "cards verse in allowlist");
+  assert(cards.correct.length === G.CARDS_CORRECT, "cards five correct");
+  assert(cards.decoys.length === G.CARDS_DECOYS && cards.hand.length === G.CARDS_CORRECT + G.CARDS_DECOYS, "cards decoy hand");
+  assert(!("enemy" in cards) && !("maxEnemy" in cards), "cards no enemy HP");
+  assert(!G.html(cards, ctx).includes("적 HP"), "cards UI no enemy HP");
   const firstCardId = cards.verseId;
-  const wrongHand = cards.correct.slice().reverse();
-  if (wrongHand.join("|") === cards.correct.join("|")) wrongHand.push(wrongHand.shift());
-  wrongHand.forEach((word) => { G.act(cards, "cards-play", { word }, ctx); });
-  assert(!cards.over, "cards not soft-locked after wrong hand");
-  assert(cards.phase === "play" && cards.played.length === 0 && cards.hand.length === cards.correct.length, "cards reclaim after wrong hand");
+  const hpBeforeWrong = cards.hp;
+  const comboBeforeWrong = cards.combo;
+  const wrongWord = cards.decoys[0] || cards.correct.slice().reverse()[0];
+  G.act(cards, "cards-play", { word: wrongWord }, ctx);
+  assert(!cards.over, "cards not soft-locked after wrong play");
+  assert(cards.phase === "play" && cards.played.length === 0 && cards.hand.length === cards.correct.length + cards.decoys.length, "cards reclaim after wrong");
   assert(cards.verseId === firstCardId, "cards same verse after reclaim");
+  assert(cards.hp === hpBeforeWrong - G.CARDS_WRONG_HP, "cards wrong attempt costs HP");
+  assert(cards.combo === comboBeforeWrong, "cards combo persists after wrong while HP > 0");
 
   const cardsWin = G.start("cards", ctx);
-  cardsWin.enemy = 3;
-  cardsWin.maxEnemy = 3;
+  const hpStart = cardsWin.hp;
   cardsWin.correct.forEach((word) => { G.act(cardsWin, "cards-play", { word }, ctx); });
-  assert(cardsWin.over && cardsWin.won && cardsWin.phase === "reveal" && cardsWin.verseText, "cards reveal on win");
+  assert(cardsWin.won && cardsWin.phase === "reveal" && cardsWin.verseText, "cards reveal on win");
+  assert(cardsWin.hp === hpStart, "cards HP persists through verse clear");
+  assert(progress.cardsWins === 1, "cards wins independent of combo");
+  const comboAfterWin = cardsWin.combo;
+  G.act(cardsWin, "cards-continue", {}, ctx);
+  assert(cardsWin.phase === "play" && cardsWin.verseId !== firstCardId, "cards advances after win");
+  assert(cardsWin.hp === hpStart && cardsWin.combo === comboAfterWin, "cards HP+combo persist to next verse");
+
+  const cardsLose = G.start("cards", ctx);
+  cardsLose.hp = G.CARDS_WRONG_HP;
+  cardsLose.combo = 7;
+  G.act(cardsLose, "cards-play", { word: cardsLose.decoys[0] }, ctx);
+  assert(cardsLose.hp === 0 && cardsLose.combo === 0 && cardsLose.phase === "reveal" && !cardsLose.won, "cards HP0 resets combo");
 
   const spire = G.start("spire", ctx);
   assert(spire.nodes.every((n) => n.type !== "relic") && !("relics" in spire), "spire no relic nodes");
