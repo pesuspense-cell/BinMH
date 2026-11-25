@@ -74,6 +74,7 @@
 
   // 성경전서 카드 로그 구절 풀: bible.json 전서(구약+신약)
   const CARDS_CORRECT = 5;
+  const CARDS_HINT = 2; // 시작 힌트 조각 수 — 보기 손패에서 제외
   const CARDS_DECOYS = 4;
   const CARDS_WRONG_HP = 5;
   const CARDS_MAX_HP = 30;
@@ -116,16 +117,14 @@
     return pickVerses(unused, 1, preferKnown, cards, seed)[0] || unused[0] || list[0] || null;
   }
 
-  function cardsHint(verse, E) {
+  function cardsHint(verse, E, correct) {
     const cue = verseLabel(verse);
-    const words = E.words(verse.text || "").map((raw) =>
-      String(raw).replace(/^[“"'(\[]+|[”"'.,!?…·:;)\]]+$/g, "") || raw
-    ).filter(Boolean);
-    if (!words.length) return "힌트 · " + cue;
-    if (words.length === 1) return "힌트 · " + cue + " · 「" + words[0] + "」";
-    const first = words[0];
-    const last = words[words.length - 1];
-    return "힌트 · " + cue + " · 시작 「" + first + "」 · 끝 「" + last + "」";
+    const parts = (correct && correct.length ? correct : fiveCorrectChunks(verse, E) || []).slice();
+    if (!parts.length) return "힌트 · " + cue;
+    const shown = parts.slice(0, CARDS_HINT);
+    if (shown.length === 1) return "힌트 · " + cue + " · 「" + shown[0] + "」";
+    // 시작 2개만 — 끝 조각 힌트 없음
+    return "힌트 · " + cue + " · 시작 「" + shown.join("」 「") + "」";
   }
 
   function distractorFills(verse, E, answer, seed, count) {
@@ -307,17 +306,21 @@
   function fragmentHand(verse, E, seed, pool) {
     const correct = fiveCorrectChunks(verse, E);
     if (!correct) return null;
+    const hinted = correct.slice(0, CARDS_HINT);
+    const rest = correct.slice(CARDS_HINT);
     const decoys = decoyChunks(pool || [], verse, correct, E, seed + 11, CARDS_DECOYS);
-    const hand = shuffle(correct.concat(decoys), seed);
+    // 보기 카드: 힌트된 시작 조각은 제외 — 남은 진짜 + 미끼만
+    const hand = shuffle(rest.concat(decoys), seed);
     return {
       id: verse.id,
       ref: verseLabel(verse),
       text: verse.text || "",
       verse,
       correct,
+      hinted,
       decoys,
       hand,
-      hint: cardsHint(verse, E)
+      hint: cardsHint(verse, E, correct)
     };
   }
 
@@ -348,7 +351,7 @@
       '<article class="card game-pick"><p class="eyebrow">계시록 전용</p><h3>계시록 슬레이</h3><p class="muted">계시록 전 장에서 뽑은 구절로 맵·장 보스를 돌파합니다. 빈칸은 조사까지 정확히 고릅니다.</p>' +
       '<p class="faint">현재 Floor ' + p.spireFloor + " · 클리어 " + p.spireWins + "회</p>" +
       '<button class="btn gold" type="button" data-act="game-start" data-game="spire">입장</button></article>' +
-      '<article class="card game-pick"><p class="eyebrow">성경전서</p><h3>성경전서 카드 로그</h3><p class="muted">성경 전서에서 랜덤으로 뽑은 구절의 조각 5장을 미끼 카드와 섞어 순서대로 냅니다. HP·콤보는 구절을 이어도 유지되고, HP가 0이 되면 콤보가 끊깁니다.</p>' +
+      '<article class="card game-pick"><p class="eyebrow">성경전서</p><h3>성경전서 카드 로그</h3><p class="muted">성경 전서에서 랜덤으로 뽑은 구절의 시작 두 조각은 힌트로 두고, 남은 진짜 조각과 미끼를 섞어 순서대로 냅니다. HP·콤보는 구절을 이어도 유지되고, HP가 0이 되면 콤보가 끊깁니다.</p>' +
       '<p class="faint">현재 구절 #' + (p.cardsIndex + 1) + " · 승리 " + p.cardsWins + "회</p>" +
       '<button class="btn gold" type="button" data-act="game-start" data-game="cards"' + (bibleReady ? "" : " disabled") + ">입장</button></article>" +
       "</div>";
@@ -383,9 +386,11 @@
     game.verseText = pack.text;
     game.hint = pack.hint;
     game.correct = pack.correct;
+    game.hinted = pack.hinted || pack.correct.slice(0, CARDS_HINT);
     game.decoys = pack.decoys;
     game.hand = pack.hand;
-    game.played = [];
+    // 시작 힌트 조각은 필드에 미리 두고, 보기는 나머지부터
+    game.played = (pack.hinted || pack.correct.slice(0, CARDS_HINT)).slice();
     game.phase = "play";
     game.revealPending = null;
     game.over = false;
@@ -398,9 +403,13 @@
     const seed = E && E.hash
       ? E.hash("reclaim:" + (game.verseId || "") + ":" + (game.hp | 0) + ":" + (game.played || []).length)
       : ((Date.now() + (game.hp | 0)) % 9973);
-    const deck = (game.correct || []).concat(game.decoys || []);
+    const hinted = (game.hinted && game.hinted.length
+      ? game.hinted
+      : (game.correct || []).slice(0, CARDS_HINT)).slice();
+    const rest = (game.correct || []).slice(hinted.length);
+    const deck = rest.concat(game.decoys || []);
     game.hand = shuffle(deck.slice(), seed);
-    game.played = [];
+    game.played = hinted;
     // Combo persists across reclaim; only HP 0 clears it.
     game.phase = "play";
     game.revealPending = null;
@@ -459,6 +468,7 @@
       verseText: "",
       hint: "",
       correct: [],
+      hinted: [],
       decoys: [],
       hand: [],
       played: [],
@@ -474,7 +484,8 @@
       game.log = "카드 구절을 준비하지 못했습니다.";
       return game;
     }
-    game.log = "성경전서 카드 · " + pack.ref + ". 힌트를 보고 진짜 조각 " + CARDS_CORRECT +
+    game.log = "성경전서 카드 · " + pack.ref + ". 시작 " + CARDS_HINT +
+      "조각은 힌트·필드에 두고, 남은 진짜 " + (CARDS_CORRECT - CARDS_HINT) +
       "장을 순서대로 내세요. 틀린 제출마다 HP -" + CARDS_WRONG_HP + ".";
     return game;
   }
@@ -768,13 +779,15 @@
       "</p>" + hpBar(game.hp, game.maxHp || CARDS_MAX_HP, "내 HP") + "</div>" + stats + "</div>" +
       '<p class="game-log">' + esc(game.log) + "</p>" +
       '<p class="faint">' + esc(game.hint || "") + "</p>" +
-      '<div class="card-field"><p class="muted">필드 (진짜 조각 ' + (game.correct || []).length + "장 · 순서대로)</p><div class=\"row wrap\">" +
+      '<div class="card-field"><p class="muted">필드 (진짜 조각 ' + (game.correct || []).length + "장 · 시작 " +
+      ((game.hinted && game.hinted.length) || CARDS_HINT) + "장은 힌트)</p><div class=\"row wrap\">" +
       (game.played.length ? game.played.map((c) => '<span class="pill">' + esc(c) + "</span>").join("") : '<span class="faint">카드를 내세요</span>') +
       "</div></div>" +
-      '<p class="muted">손패 · 진짜 ' + (game.correct || []).length + " + 미끼 " + (game.decoys || []).length + "</p><div class=\"row wrap\">" +
+      '<p class="muted">보기 카드 · 남은 진짜 ' + Math.max(0, (game.correct || []).length - ((game.hinted && game.hinted.length) || CARDS_HINT)) +
+      " + 미끼 " + (game.decoys || []).length + "</p><div class=\"row wrap\">" +
       game.hand.map((c) => '<button class="btn" type="button" data-act="cards-play" data-word="' + esc(c) + '"' + (game.over ? " disabled" : "") + ">" + esc(c) + "</button>").join("") +
       "</div>" +
-      '<article class="card" style="margin-top:16px"><p class="muted">힌트의 책·장·절과 시작·끝 조각을 보고 진짜 5장을 고르세요. 틀린 제출마다 HP -' +
+      '<article class="card" style="margin-top:16px"><p class="muted">힌트의 책·장·절과 시작 두 조각을 보고, 보기에서 남은 진짜 조각을 순서대로 내세요. 틀린 제출마다 HP -' +
       CARDS_WRONG_HP + ". 구절을 이어도 HP·콤보는 유지되고, HP 0일 때만 콤보가 끊기며 본문이 공개됩니다.</p>" +
       "</article>" +
       '<p class="row"><button class="btn ghost" type="button" data-act="game-back">로비로</button></p></div>';
@@ -803,6 +816,7 @@
     verseAllowedForCards,
     filterCardPool,
     CARDS_CORRECT,
+    CARDS_HINT,
     CARDS_DECOYS,
     CARDS_WRONG_HP
   };

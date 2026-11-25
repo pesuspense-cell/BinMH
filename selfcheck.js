@@ -214,23 +214,35 @@ BB.load().then(() => {
   assert(cards.verseText && cards.seenVerseIds.length === 1, "cards tracks seen");
   assert(G.verseAllowedForCards(bibleList.find((v) => v.id === cards.verseId) || { book: Number(String(cards.verseId).split(".")[0]), chapter: Number(String(cards.verseId).split(/[.:]/)[1]) }), "cards verse in whole bible");
   assert(cards.correct.length === G.CARDS_CORRECT, "cards five correct");
-  assert(cards.decoys.length === G.CARDS_DECOYS && cards.hand.length === G.CARDS_CORRECT + G.CARDS_DECOYS, "cards decoy hand");
+  assert(cards.hinted && cards.hinted.length === G.CARDS_HINT, "cards hinted first two");
+  assert(cards.hinted[0] === cards.correct[0] && cards.hinted[1] === cards.correct[1], "cards hinted match correct head");
+  assert(/시작/.test(cards.hint) && !/끝/.test(cards.hint), "cards hint is start-only (no end)");
+  cards.hinted.forEach((w) => {
+    assert(cards.hint.indexOf(w) >= 0, "cards hint shows " + w);
+    assert(cards.hand.indexOf(w) < 0, "cards hand excludes hinted " + w);
+  });
+  assert(cards.played.length === G.CARDS_HINT && cards.played.join("|") === cards.hinted.join("|"), "cards field prefilled with hint");
+  const playableCorrect = G.CARDS_CORRECT - G.CARDS_HINT;
+  assert(cards.decoys.length === G.CARDS_DECOYS && cards.hand.length === playableCorrect + G.CARDS_DECOYS, "cards decoy hand excludes hint");
   assert(!("enemy" in cards) && !("maxEnemy" in cards), "cards no enemy HP");
-  assert(!G.html(cards, ctx).includes("적 HP"), "cards UI no enemy HP");
+  const cardsHtml = G.html(cards, ctx);
+  assert(!cardsHtml.includes("적 HP"), "cards UI no enemy HP");
+  assert(cardsHtml.includes("보기 카드") && cardsHtml.includes("시작 두 조각"), "cards UI start-hint copy");
+  assert(!cardsHtml.includes("시작·끝"), "cards UI dropped end-hint copy");
   const firstCardId = cards.verseId;
   const hpBeforeWrong = cards.hp;
   const comboBeforeWrong = cards.combo;
   const wrongWord = cards.decoys[0] || cards.correct.slice().reverse()[0];
   G.act(cards, "cards-play", { word: wrongWord }, ctx);
   assert(!cards.over, "cards not soft-locked after wrong play");
-  assert(cards.phase === "play" && cards.played.length === 0 && cards.hand.length === cards.correct.length + cards.decoys.length, "cards reclaim after wrong");
+  assert(cards.phase === "play" && cards.played.length === G.CARDS_HINT && cards.hand.length === playableCorrect + cards.decoys.length, "cards reclaim after wrong keeps hint off hand");
   assert(cards.verseId === firstCardId, "cards same verse after reclaim");
   assert(cards.hp === hpBeforeWrong - G.CARDS_WRONG_HP, "cards wrong attempt costs HP");
   assert(cards.combo === comboBeforeWrong, "cards combo persists after wrong while HP > 0");
 
   const cardsWin = G.start("cards", ctx);
   const hpStart = cardsWin.hp;
-  cardsWin.correct.forEach((word) => { G.act(cardsWin, "cards-play", { word }, ctx); });
+  cardsWin.correct.slice(G.CARDS_HINT).forEach((word) => { G.act(cardsWin, "cards-play", { word }, ctx); });
   assert(cardsWin.won && cardsWin.phase === "reveal" && cardsWin.verseText, "cards reveal on win");
   assert(cardsWin.hp === hpStart, "cards HP persists through verse clear");
   assert(progress.cardsWins === 1, "cards wins independent of combo");
@@ -238,6 +250,7 @@ BB.load().then(() => {
   G.act(cardsWin, "cards-continue", {}, ctx);
   assert(cardsWin.phase === "play" && cardsWin.verseId !== firstCardId, "cards advances after win");
   assert(cardsWin.hp === hpStart && cardsWin.combo === comboAfterWin, "cards HP+combo persist to next verse");
+  assert(cardsWin.played.length === G.CARDS_HINT && cardsWin.hand.indexOf(cardsWin.hinted[0]) < 0, "next verse also excludes hint from hand");
 
   const cardsLose = G.start("cards", ctx);
   cardsLose.hp = G.CARDS_WRONG_HP;
@@ -255,7 +268,7 @@ BB.load().then(() => {
   for (let i = 0; i < 12; i++) {
     const hit = bibleList.find((v) => v.id === varietyCards.verseId);
     if (hit) booksSeen.add(hit.book);
-    varietyCards.correct.forEach((word) => { G.act(varietyCards, "cards-play", { word }, varietyCtx); });
+    varietyCards.correct.slice(G.CARDS_HINT).forEach((word) => { G.act(varietyCards, "cards-play", { word }, varietyCtx); });
     if (varietyCards.phase === "reveal") G.act(varietyCards, "cards-continue", {}, varietyCtx);
   }
   assert(booksSeen.size >= 2, "cards draws from multiple books in whole-bible pool");
