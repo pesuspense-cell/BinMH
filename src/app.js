@@ -22,6 +22,7 @@
     review: "잊기 직전에 다시 꺼냅니다. 간격은 1일, 3일, 7일, 그 뒤로 조금씩 늘어납니다.",
     exam: "방금 외운 절을 다른 문제와 섞어, 힌트 없이 다시 확인합니다.",
     chapter: "한 장 전체를 순서와 본문으로 확인합니다. 첫 시도와 한 번의 재시도만 점수에 들어갑니다.",
+    "chapter-recite": "한 장의 모든 절을 순서대로 떠올립니다. 첫소리로 장·절을 고른 뒤, 본문을 적어 보세요. 진행은 다음·나중만 씁니다.",
     spot: "이미 외운 장에서 흔들리기 쉬운 절을 골라 다시 꺼냅니다."
   };
 
@@ -65,7 +66,7 @@
     if (!B || !B.load) return Promise.resolve(null);
     if (!bibleGameLoading) {
       bibleGameLoading = B.load().then(() => {
-        // Full flat list; card log filters to the chapter allowlist in LampGames.
+        // Full flat list; card log draws from the entire bible.json (전서 랜덤).
         bibleGameList = B.flatList();
         return bibleGameList;
       }).catch(() => {
@@ -1332,6 +1333,53 @@
     render();
   }
 
+  function startChapterRecite(chapter) {
+    const ch = Number(chapter);
+    const ids = list.filter((verse) => verse.chapter === ch).map((verse) => verse.id);
+    if (!ids.length) return;
+    ui.session = baseSession("chapter-recite");
+    ui.session.chapter = ch;
+    ui.session.learnIds = ids;
+    ui.session.learnCursor = 0;
+    ui.session.ready = [];
+    ui.session.missed = [];
+    ui.session.block = "recite";
+    ui.page = "session";
+    beginChapterRecite();
+    render();
+  }
+
+  function beginChapterRecite() {
+    const session = ui.session;
+    if (!session || session.kind !== "chapter-recite") return;
+    if (session.learnCursor >= session.learnIds.length) {
+      finishChapterRecite();
+      return;
+    }
+    session.feedback = null;
+    session.step = { id: session.learnIds[session.learnCursor] };
+    beginScaffold();
+  }
+
+  function finishChapterRecite() {
+    const session = ui.session;
+    const total = (session.learnIds || []).length;
+    const ready = session.ready || [];
+    const missed = (session.learnIds || []).filter((id) => !ready.includes(id));
+    const passed = ready.length;
+    session.phase = "done";
+    session.feedback = null;
+    session.summary = {
+      kind: "chapter-recite",
+      chapter: session.chapter,
+      pass: missed.length === 0 && total > 0,
+      passed,
+      of: total,
+      weak: missed
+    };
+    if (session.summary.pass) addXp(Math.min(80, 4 * total));
+  }
+
   function nextDaily() {
     const session = ui.session;
     if (session.waiting.length && !session.didWaiting) {
@@ -1363,6 +1411,10 @@
 
   function beginLearn() {
     const session = ui.session;
+    if (session.kind === "chapter-recite") {
+      beginChapterRecite();
+      return;
+    }
     if (session.learnCursor >= session.learnIds.length) {
       nextDaily();
       return;
@@ -1399,7 +1451,9 @@
     if (choice === step.id) {
       step.wrongChoice = "";
       step.shake = false;
-      beginCloze();
+      // 전 절 한 번에 외우기: 첫소리·장절 뒤 바로 백지 인출 (빈칸 생략)
+      if (session.kind === "chapter-recite") beginRecall();
+      else beginCloze();
       render();
       return;
     }
@@ -1484,11 +1538,14 @@
       card.stage = Math.max(card.stage || 0, 2);
       card.correct = (card.correct || 0) + 1;
       if (!session.ready.includes(verse.id)) session.ready.push(verse.id);
-      addXp(12);
+      addXp(session.kind === "chapter-recite" ? 8 : 12);
     } else {
       card.stage = Math.max(card.stage || 0, 1);
       card.wrong = (card.wrong || 0) + 1;
       step.showSkeleton = true;
+      if (session.kind === "chapter-recite" && !(session.missed || []).includes(verse.id)) {
+        session.missed = (session.missed || []).concat(verse.id);
+      }
       addEffortXp();
     }
     state.cards[verse.id] = card;
@@ -1499,6 +1556,7 @@
 
   function skipVerse() {
     const session = ui.session;
+    if (!session || !session.step) return;
     const id = session.step.id;
     const card = state.cards[id] || E.blankCard(today());
     card.stage = Math.max(card.stage || 0, 1);
@@ -1506,6 +1564,9 @@
     card.due = today();
     card.last = today();
     state.cards[id] = card;
+    if (session.kind === "chapter-recite" && !(session.missed || []).includes(id)) {
+      session.missed = (session.missed || []).concat(id);
+    }
     session.learnCursor += 1;
     session.feedback = null;
     beginLearn();
@@ -2454,11 +2515,12 @@
       const sealCls = rec.passed && rec.shaken ? "seal dim" : rec.passed ? "seal lit" : prog.known ? "seal half" : "seal";
       return head + '<article class="card ch"><div class="' + sealCls + '">' + sealText + "</div><p class=\"eyebrow\">" + meta.chapter + "장 · " + prog.total + "절</p><h3>" + esc(meta.title) + "</h3><p>" + esc(meta.scene) + '</p><div class="meter"><span style="--w:' + (prog.known / prog.total * 100) + '%"></span></div><p class="faint">' + prog.known + "/" + prog.total + (prog.due ? " · 복습 " + prog.due : "") + "</p><div class=\"row\">" +
         '<button class="btn small" type="button" data-act="read" data-ch="' + meta.chapter + '">읽기</button>' +
+        '<button class="btn small" type="button" data-act="chapter-recite" data-ch="' + meta.chapter + '" title="이 장의 모든 절을 한 자리에서 떠올립니다">전 절 외우기</button>' +
         '<button class="btn small" type="button" data-act="chapter-test" data-ch="' + meta.chapter + '"' + (ready ? "" : " disabled") + ' title="' + (ready ? "장 전체를 확인합니다" : "모든 절을 한 번씩 통과하면 열립니다") + '">장 시험</button>' +
         '<button class="btn small" type="button" data-act="spot" data-ch="' + meta.chapter + '"' + (prog.known >= 3 ? "" : " disabled") + ">지키기</button>" +
         '<button class="btn small" type="button" data-act="place" data-ch="' + meta.chapter + '">' + (rec.passed ? "다시 확인" : "이미 외움") + "</button></div></article>";
     }).join("");
-    return '<p class="eyebrow">스물두 장</p><h1>봉인할 장</h1><p class="lede">순서대로 새기면 장 시험이 열립니다. 이미 외운 장은 확인을 통과하면 봉인되고, 사흘 뒤에 다시 복습으로 돌아옵니다.</p><div class="chapters">' + cards + "</div>";
+    return '<p class="eyebrow">스물두 장</p><h1>봉인할 장</h1><p class="lede">전 절 외우기로 한 장을 한 번에 떠올려 보고, 순서대로 새기면 장 시험이 열립니다. 이미 외운 장은 확인을 통과하면 봉인되고, 사흘 뒤에 다시 복습으로 돌아옵니다.</p><div class="chapters">' + cards + "</div>";
   }
 
   function readHtml() {
@@ -2471,7 +2533,9 @@
       const card = state.cards[verse.id];
       return '<div class="verse ' + (verse.id === ui.highlight ? "focus" : "") + " " + (status.key === "firm" || status.key === "review" ? "known" : "") + '" id="v-' + verse.chapter + "-" + verse.verse + '"><sup>' + verse.verse + '</sup><div class="verse-body"><div class="verse-line"><p>' + esc(verse.text) + "</p>" + earButton(verse.id) + '</div><p class="faint">' + esc(status.label) + (card && card.stage >= 3 ? " · 다음 " + prettyDate(card.due) : "") + (E.MARKS[verse.id] ? " · " + esc(E.MARKS[verse.id]) : "") + "</p></div></div>";
     }).join("");
-    return '<p class="eyebrow">개역한글</p><h1>' + chapter + "장 · " + esc(meta.title) + "</h1><p class=\"lede\">" + esc(meta.scene) + '</p><div class="ch-jumps">' + jumps + '</div><article class="card reader">' + body + "</article>";
+    return '<p class="eyebrow">개역한글</p><h1>' + chapter + "장 · " + esc(meta.title) + "</h1><p class=\"lede\">" + esc(meta.scene) + '</p><div class="ch-jumps">' + jumps + '</div>' +
+      '<p class="row" style="margin-bottom:12px"><button class="btn gold" type="button" data-act="chapter-recite" data-ch="' + chapter + '">전 절 한 번에 외우기</button></p>' +
+      '<article class="card reader">' + body + "</article>";
   }
 
   function journalHtml() {
@@ -2652,6 +2716,15 @@
 
   function sessionMeta() {
     const session = ui.session;
+    if (session.kind === "chapter-recite" && (session.phase === "scaffold" || session.phase === "recall")) {
+      const frac = { scaffold: 0.35, recall: 0.85 }[session.phase] || 0.5;
+      const base = session.learnIds.length ? (session.learnCursor + frac) / session.learnIds.length : 0;
+      return {
+        label: session.chapter + "장 전 절 외우기 " + (session.learnCursor + 1) + " / " + session.learnIds.length,
+        pct: base * 100,
+        help: PHASE_HELP["chapter-recite"]
+      };
+    }
     if (session.phase === "read" || session.phase === "scaffold" || session.phase === "cloze" || session.phase === "recall") {
       const frac = { read: 0.2, scaffold: 0.4, cloze: 0.65, recall: 0.9 }[session.phase] || 0;
       const base = session.learnIds.length ? (session.learnCursor + frac) / session.learnIds.length : 0;
@@ -2810,6 +2883,14 @@
         (session.lastExam ? "<p>확인 시험 " + session.lastExam.passed + "/" + session.lastExam.of + "절 · " + Math.round(session.lastExam.avg * 100) + "%</p>" : "") +
         learned + missed + '<div class="row"><button class="btn gold" type="button" data-act="nav" data-page="home">오늘 화면</button><button class="btn" type="button" data-act="nav" data-page="journal">한 줄 남기기</button></div></article></div>';
     }
+    if (summary.kind === "chapter-recite") {
+      const pass = !!summary.pass;
+      const weak = (summary.weak || []).map((id) => "<p class=\"list-verse\">" + esc(refText(id)) + "</p>").join("");
+      return '<div class="panel"><article class="card"><div class="stamp ' + (pass ? "in" : "off") + '">' + (pass ? "완료" : "다시") + "</div><h1>" +
+        (pass ? summary.chapter + "장 전 절을 떠올렸습니다" : summary.chapter + "장 전 절 외우기를 마쳤습니다") +
+        "</h1><p class=\"lede\">맞힌 절 " + (summary.passed || 0) + "/" + (summary.of || 0) + " · 이번 자리 " + gained + "점</p>" + weak +
+        '<div class="row"><button class="btn gold" type="button" data-act="nav" data-page="chapters">장으로</button><button class="btn" type="button" data-act="nav" data-page="read">읽기</button><button class="btn" type="button" data-act="nav" data-page="home">오늘 화면</button></div></article></div>';
+    }
     const pass = !!summary.pass;
     const title = session.kind === "chapter" || session.kind === "placement"
       ? (pass ? session.chapter + "장을 봉인했습니다" : session.chapter + "장은 아직 흔들립니다")
@@ -2938,6 +3019,7 @@
     if (act === "review-due") return startReview(dueVerses().map((verse) => verse.id));
     if (act === "spot") return startSpot(el.dataset.ch);
     if (act === "chapter-test") return startChapter(el.dataset.ch, "chapter");
+    if (act === "chapter-recite") return startChapterRecite(el.dataset.ch);
     if (act === "place") return startChapter(el.dataset.ch, "placement");
     if (act === "dictate") {
       const form = el.closest("form");

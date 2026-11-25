@@ -182,12 +182,13 @@ BB.load().then(() => {
   const G = gameBox.LampGames;
   const bibleList = BB.flatList();
   const cardPool = G.filterCardPool(bibleList);
-  assert(cardPool.length > 1000, "card allowlist pool size " + cardPool.length);
+  assert(cardPool.length === bibleList.length, "card pool is entire bible " + cardPool.length);
+  assert(cardPool.length > 30000, "card whole-bible pool size " + cardPool.length);
   assert(cardPool.every((v) => G.verseAllowedForCards(v)), "card pool all allowed");
-  assert(!bibleList.filter((v) => v.book === 1 && v.chapter === 4).some((v) => G.verseAllowedForCards(v)), "gen 4 excluded");
+  assert(bibleList.filter((v) => v.book === 1 && v.chapter === 4).every((v) => G.verseAllowedForCards(v)), "gen 4 included");
+  assert(bibleList.filter((v) => v.bookName === "레위기" && v.chapter === 1).every((v) => G.verseAllowedForCards(v)), "leviticus included");
   assert(bibleList.filter((v) => v.bookName === "잠언" && v.chapter === 1).every((v) => G.verseAllowedForCards(v)), "proverbs allowed");
   assert(bibleList.filter((v) => v.bookName === "마태복음" && v.chapter === 5).every((v) => G.verseAllowedForCards(v)), "matthew allowed");
-  assert(!bibleList.filter((v) => v.book === 3 && v.chapter === 1).some((v) => G.verseAllowedForCards(v)), "leviticus excluded");
 
   const progress = { spireFloor: 1, cardsIndex: 0, spireWins: 0, cardsWins: 0 };
   const ctx = {
@@ -202,13 +203,16 @@ BB.load().then(() => {
   const lobby = G.lobbyHtml(ctx);
   assert(lobby.includes("미니게임 두 가지"), "lobby two games");
   assert(lobby.includes("계시록 슬레이") && lobby.includes("성경전서 카드 로그"), "lobby titles");
+  assert(lobby.includes("성경 전서에서 랜덤"), "lobby whole-bible copy");
   assert(!lobby.includes("오토체스") && !lobby.includes('data-game="chess"'), "chess removed");
   assert(!lobby.includes("유물"), "lobby no relics");
 
   const cards = G.start("cards", ctx);
   assert(cards.kind === "cards" && cards.hint && /힌트/.test(cards.hint), "cards hint");
+  assert(/장\s+\d+절/.test(cards.hint) || /장\s+\d+절/.test(cards.ref || ""), "cards hint/ref shows chapter+verse");
+  assert(cards.ref && /장/.test(cards.ref) && /절/.test(cards.ref), "cards ref is 책 N장 M절");
   assert(cards.verseText && cards.seenVerseIds.length === 1, "cards tracks seen");
-  assert(G.verseAllowedForCards(bibleList.find((v) => v.id === cards.verseId) || { book: Number(String(cards.verseId).split(".")[0]), chapter: Number(String(cards.verseId).split(/[.:]/)[1]) }), "cards verse in allowlist");
+  assert(G.verseAllowedForCards(bibleList.find((v) => v.id === cards.verseId) || { book: Number(String(cards.verseId).split(".")[0]), chapter: Number(String(cards.verseId).split(/[.:]/)[1]) }), "cards verse in whole bible");
   assert(cards.correct.length === G.CARDS_CORRECT, "cards five correct");
   assert(cards.decoys.length === G.CARDS_DECOYS && cards.hand.length === G.CARDS_CORRECT + G.CARDS_DECOYS, "cards decoy hand");
   assert(!("enemy" in cards) && !("maxEnemy" in cards), "cards no enemy HP");
@@ -240,6 +244,21 @@ BB.load().then(() => {
   cardsLose.combo = 7;
   G.act(cardsLose, "cards-play", { word: cardsLose.decoys[0] }, ctx);
   assert(cardsLose.hp === 0 && cardsLose.combo === 0 && cardsLose.phase === "reveal" && !cardsLose.won, "cards HP0 resets combo");
+
+  // Variety across whole bible: successive picks should span multiple books.
+  const booksSeen = new Set();
+  const varietyCtx = Object.assign({}, ctx, {
+    progress: { spireFloor: 1, cardsIndex: 0, spireWins: 0, cardsWins: 0 },
+    setProgress: () => {}
+  });
+  const varietyCards = G.start("cards", varietyCtx);
+  for (let i = 0; i < 12; i++) {
+    const hit = bibleList.find((v) => v.id === varietyCards.verseId);
+    if (hit) booksSeen.add(hit.book);
+    varietyCards.correct.forEach((word) => { G.act(varietyCards, "cards-play", { word }, varietyCtx); });
+    if (varietyCards.phase === "reveal") G.act(varietyCards, "cards-continue", {}, varietyCtx);
+  }
+  assert(booksSeen.size >= 2, "cards draws from multiple books in whole-bible pool");
 
   const spire = G.start("spire", ctx);
   assert(spire.nodes.every((n) => n.type !== "relic") && !("relics" in spire), "spire no relic nodes");

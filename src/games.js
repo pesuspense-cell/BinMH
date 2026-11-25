@@ -55,9 +55,16 @@
 
   function verseLabel(verse) {
     if (!verse) return "";
-    if (verse.ref) return verse.ref;
-    if (verse.bookName) return verse.bookName + " " + verse.chapter + ":" + verse.verse;
-    return "계시록 " + verse.id;
+    if (verse.bookName && verse.chapter != null && verse.verse != null) {
+      return verse.bookName + " " + verse.chapter + "장 " + verse.verse + "절";
+    }
+    if (verse.ref) {
+      const m = String(verse.ref).match(/^(.+?)\s+(\d+):(\d+)/);
+      if (m) return m[1] + " " + m[2] + "장 " + m[3] + "절";
+      return verse.ref;
+    }
+    if (verse.bookName) return verse.bookName + " " + verse.chapter + "장 " + verse.verse + "절";
+    return "계시록 " + String(verse.id || "").replace(":", "장 ") + (String(verse.id || "").includes(":") ? "절" : "");
   }
 
   function verseKey(verse) {
@@ -65,17 +72,7 @@
     return String(verse.id || verse.ref || verseLabel(verse));
   }
 
-  // 성경전서 카드 로그 구절 풀: 지정 OT 장 + 잠언~말라기 전장 + 신약 전장
-  const CARD_SELECTIVE_CHAPTERS = {
-    1: [1, 2, 3, 6, 9, 15, 37],
-    2: [1, 2, 3, 12, 19, 25],
-    4: [19, 21],
-    5: [13, 18, 29, 32],
-    6: [9],
-    11: [9, 11],
-    19: [21, 23, 109, 119]
-  };
-  const CARD_POOL_FROM_BOOK = 20; // 잠언(20)부터 요한계시록(66)까지 전장
+  // 성경전서 카드 로그 구절 풀: bible.json 전서(구약+신약)
   const CARDS_CORRECT = 5;
   const CARDS_DECOYS = 4;
   const CARDS_WRONG_HP = 5;
@@ -83,12 +80,8 @@
 
   function verseAllowedForCards(verse) {
     if (!verse) return false;
-    const book = Number(verse.book) || 0;
-    const chapter = Number(verse.chapter) || 0;
-    if (!book || !chapter) return false;
-    if (book >= CARD_POOL_FROM_BOOK) return true;
-    const allowed = CARD_SELECTIVE_CHAPTERS[book];
-    return !!(allowed && allowed.indexOf(chapter) >= 0);
+    if (verse.book && verse.chapter) return true;
+    return !!verseKey(verse);
   }
 
   function filterCardPool(list) {
@@ -99,23 +92,18 @@
     if (kind === "spire") return (ctx.list || []).slice();
     const bible = ctx.bibleList;
     const raw = (bible && bible.length) ? bible : (ctx.list || []);
-    const filtered = filterCardPool(raw);
-    return filtered.length ? filtered : raw.slice();
+    return filterCardPool(raw);
   }
 
   function pickVerses(list, n, preferKnown, cards, seed) {
-    const pool = list.slice();
+    let pool = list.slice();
     if (preferKnown && cards) {
-      pool.sort((a, b) => {
-        const ka = (cards[a.id]?.stage || 0) >= 3 ? 1 : 0;
-        const kb = (cards[b.id]?.stage || 0) >= 3 ? 1 : 0;
-        return kb - ka;
-      });
+      const known = pool.filter((a) => (cards[a.id]?.stage || 0) >= 3);
+      if (known.length) pool = known;
     }
     const salt = seed == null ? (Date.now() % 9973) : seed;
-    // Shuffle a wide slice so we do not collapse to a tiny repeated subset.
-    const window = Math.max(n * 12, Math.min(pool.length, 80));
-    return shuffle(pool.slice(0, window), salt).slice(0, n);
+    // Full-pool shuffle so 전서 랜덤 does not collapse to Genesis-only windows.
+    return shuffle(pool, salt).slice(0, n);
   }
 
   function pickUnusedVerse(list, seen, preferKnown, cards, seed) {
@@ -128,17 +116,8 @@
     return pickVerses(unused, 1, preferKnown, cards, seed)[0] || unused[0] || list[0] || null;
   }
 
-  function bookChapterCue(verse) {
-    if (!verse) return "";
-    if (verse.bookName && verse.chapter != null) return verse.bookName + " " + verse.chapter + "장";
-    const label = verseLabel(verse);
-    const m = String(label).match(/^(.+?)\s+(\d+)(?::\d+)?/);
-    if (m) return m[1] + " " + m[2] + "장";
-    return label;
-  }
-
   function cardsHint(verse, E) {
-    const cue = bookChapterCue(verse);
+    const cue = verseLabel(verse);
     const words = E.words(verse.text || "").map((raw) =>
       String(raw).replace(/^[“"'(\[]+|[”"'.,!?…·:;)\]]+$/g, "") || raw
     ).filter(Boolean);
@@ -369,7 +348,7 @@
       '<article class="card game-pick"><p class="eyebrow">계시록 전용</p><h3>계시록 슬레이</h3><p class="muted">계시록 전 장에서 뽑은 구절로 맵·장 보스를 돌파합니다. 빈칸은 조사까지 정확히 고릅니다.</p>' +
       '<p class="faint">현재 Floor ' + p.spireFloor + " · 클리어 " + p.spireWins + "회</p>" +
       '<button class="btn gold" type="button" data-act="game-start" data-game="spire">입장</button></article>' +
-      '<article class="card game-pick"><p class="eyebrow">성경전서</p><h3>성경전서 카드 로그</h3><p class="muted">허용 장에서 뽑은 구절의 조각 5장을 미끼 카드와 섞어 순서대로 냅니다. HP·콤보는 구절을 이어도 유지되고, HP가 0이 되면 콤보가 끊깁니다.</p>' +
+      '<article class="card game-pick"><p class="eyebrow">성경전서</p><h3>성경전서 카드 로그</h3><p class="muted">성경 전서에서 랜덤으로 뽑은 구절의 조각 5장을 미끼 카드와 섞어 순서대로 냅니다. HP·콤보는 구절을 이어도 유지되고, HP가 0이 되면 콤보가 끊깁니다.</p>' +
       '<p class="faint">현재 구절 #' + (p.cardsIndex + 1) + " · 승리 " + p.cardsWins + "회</p>" +
       '<button class="btn gold" type="button" data-act="game-start" data-game="cards"' + (bibleReady ? "" : " disabled") + ">입장</button></article>" +
       "</div>";
@@ -795,7 +774,7 @@
       '<p class="muted">손패 · 진짜 ' + (game.correct || []).length + " + 미끼 " + (game.decoys || []).length + "</p><div class=\"row wrap\">" +
       game.hand.map((c) => '<button class="btn" type="button" data-act="cards-play" data-word="' + esc(c) + '"' + (game.over ? " disabled" : "") + ">" + esc(c) + "</button>").join("") +
       "</div>" +
-      '<article class="card" style="margin-top:16px"><p class="muted">힌트의 책·장과 시작·끝 조각을 보고 진짜 5장을 고르세요. 틀린 제출마다 HP -' +
+      '<article class="card" style="margin-top:16px"><p class="muted">힌트의 책·장·절과 시작·끝 조각을 보고 진짜 5장을 고르세요. 틀린 제출마다 HP -' +
       CARDS_WRONG_HP + ". 구절을 이어도 HP·콤보는 유지되고, HP 0일 때만 콤보가 끊기며 본문이 공개됩니다.</p>" +
       "</article>" +
       '<p class="row"><button class="btn ghost" type="button" data-act="game-back">로비로</button></p></div>';
